@@ -1,0 +1,414 @@
+const express = require('express');
+const router = express.Router();
+const Subscription = require('../models/Subscription');
+const User = require('../models/User');
+const Product = require('../models/Product');
+const auth = require('../middleware/auth');
+
+// Get all subscription plans
+router.get('/plans', (req, res) => {
+  const plans = [
+    {
+      id: 'monthly',
+      title: 'Monthly Refresh',
+      description: 'Get new styles every month',
+      interval: 'monthly',
+      priceMultiplier: 1
+    },
+    {
+      id: 'quarterly',
+      title: 'Quarterly Collection',
+      description: 'Seasonal styles every 3 months',
+      interval: 'quarterly',
+      priceMultiplier: 2.8
+    }
+  ];
+  
+  res.json(plans);
+});
+
+// Get all package types
+router.get('/packages', (req, res) => {
+  const packages = [
+    {
+      id: 'full',
+      title: 'Full Set',
+      description: 'Complete outfit including shirt, pants, and accessories',
+      includes: ['Shirt', 'Pants', 'Accessories'],
+      basePrice: 89.99
+    },
+    {
+      id: 'tops',
+      title: 'Tops Only',
+      description: 'Selection of shirts and tops',
+      includes: ['Shirt/Top'],
+      basePrice: 49.99
+    },
+    {
+      id: 'accessories',
+      title: 'Accessories Only',
+      description: 'Selection of accessories (rings, necklaces, sunglasses, etc.)',
+      includes: ['Accessories'],
+      basePrice: 39.99
+    }
+  ];
+  
+  res.json(packages);
+});
+
+// Get all tiers
+router.get('/tiers', (req, res) => {
+  const tiers = [
+    {
+      id: 'budget',
+      title: 'Budget Friendly',
+      description: 'Quality basics at affordable prices',
+      priceMultiplier: 1,
+      itemQuality: 'Basic essentials'
+    },
+    {
+      id: 'mid',
+      title: 'Premium Selection',
+      description: 'Higher quality materials and trendy styles',
+      priceMultiplier: 1.5,
+      itemQuality: 'Premium materials'
+    },
+    {
+      id: 'luxury',
+      title: 'Luxury Collection',
+      description: 'Designer collaborations and exclusive pieces',
+      priceMultiplier: 2.2,
+      itemQuality: 'Exclusive designs'
+    }
+  ];
+  
+  res.json(tiers);
+});
+
+// Get all festive options
+router.get('/festive', (req, res) => {
+  const festiveOptions = [
+    {
+      id: 'none',
+      title: 'No Festive Package',
+      description: 'Regular subscription without festive items',
+      priceAddon: 0
+    },
+    {
+      id: 'cny',
+      title: 'Chinese New Year Collection',
+      description: 'Special CNY outfits and accessories',
+      priceAddon: 29.99
+    },
+    {
+      id: 'christmas',
+      title: 'Holiday Season Package',
+      description: 'Festive outfits for the holiday season',
+      priceAddon: 29.99
+    },
+    {
+      id: 'summer',
+      title: 'Summer Special',
+      description: 'Beach-ready outfits and accessories',
+      priceAddon: 24.99
+    }
+  ];
+  
+  res.json(festiveOptions);
+});
+
+// Get user's active subscription
+router.get('/user', auth, async (req, res) => {
+  try {
+    const subscription = await Subscription.findOne({ 
+      user: req.user.id,
+      status: 'active'
+    }).populate('deliveryHistory.items.product');
+    
+    if (!subscription) {
+      return res.status(404).json({ message: 'No active subscription found' });
+    }
+    
+    res.json(subscription);
+  } catch (error) {
+    console.error('Error fetching subscription:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Create a new subscription
+router.post('/', auth, async (req, res) => {
+  const { 
+    plan, 
+    packageType, 
+    tier, 
+    includeSecondHand, 
+    festivePackage,
+    preferences
+  } = req.body;
+  
+  try {
+    // Calculate price based on selections
+    const packages = {
+      full: 89.99,
+      tops: 49.99,
+      accessories: 39.99
+    };
+    
+    const tiers = {
+      budget: 1,
+      mid: 1.5,
+      luxury: 2.2
+    };
+    
+    const planMultipliers = {
+      monthly: 1,
+      quarterly: 2.8
+    };
+    
+    const festiveAddons = {
+      none: 0,
+      cny: 29.99,
+      christmas: 29.99,
+      summer: 24.99
+    };
+    
+    const basePrice = packages[packageType] * tiers[tier] * planMultipliers[plan];
+    const festiveAddon = festiveAddons[festivePackage];
+    const discount = includeSecondHand ? basePrice * 0.1 : 0; // 10% discount if including second hand
+    
+    const totalPrice = basePrice + festiveAddon - discount;
+    
+    // Calculate next delivery date
+    const nextDeliveryDate = Subscription.calculateNextDeliveryDate(plan);
+    
+    // Create new subscription
+    const newSubscription = new Subscription({
+      user: req.user.id,
+      plan,
+      packageType,
+      tier,
+      includeSecondHand,
+      festivePackage,
+      nextDeliveryDate,
+      price: {
+        base: basePrice,
+        festiveAddon,
+        discount,
+        total: totalPrice
+      },
+      preferences
+    });
+    
+    await newSubscription.save();
+    
+    // Update user's isSubscribed status
+    await User.findByIdAndUpdate(req.user.id, { isSubscribed: true });
+    
+    res.status(201).json(newSubscription);
+  } catch (error) {
+    console.error('Error creating subscription:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Update subscription
+router.put('/:id', auth, async (req, res) => {
+  const { 
+    plan, 
+    packageType, 
+    tier, 
+    includeSecondHand, 
+    festivePackage,
+    preferences,
+    status
+  } = req.body;
+  
+  try {
+    let subscription = await Subscription.findById(req.params.id);
+    
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+    
+    // Check if subscription belongs to user
+    if (subscription.user.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    // Update fields if provided
+    if (plan) subscription.plan = plan;
+    if (packageType) subscription.packageType = packageType;
+    if (tier) subscription.tier = tier;
+    if (includeSecondHand !== undefined) subscription.includeSecondHand = includeSecondHand;
+    if (festivePackage) subscription.festivePackage = festivePackage;
+    if (preferences) subscription.preferences = preferences;
+    if (status) subscription.status = status;
+    
+    // Recalculate price if necessary
+    if (plan || packageType || tier || includeSecondHand !== undefined || festivePackage) {
+      // Calculate price based on selections (code similar to POST route)
+      const packages = {
+        full: 89.99,
+        tops: 49.99,
+        accessories: 39.99
+      };
+      
+      const tiers = {
+        budget: 1,
+        mid: 1.5,
+        luxury: 2.2
+      };
+      
+      const planMultipliers = {
+        monthly: 1,
+        quarterly: 2.8
+      };
+      
+      const festiveAddons = {
+        none: 0,
+        cny: 29.99,
+        christmas: 29.99,
+        summer: 24.99
+      };
+      
+      const basePrice = packages[subscription.packageType] * 
+                       tiers[subscription.tier] * 
+                       planMultipliers[subscription.plan];
+      const festiveAddon = festiveAddons[subscription.festivePackage];
+      const discount = subscription.includeSecondHand ? basePrice * 0.1 : 0;
+      
+      subscription.price = {
+        base: basePrice,
+        festiveAddon,
+        discount,
+        total: basePrice + festiveAddon - discount
+      };
+      
+      // Recalculate next delivery date if plan changed
+      if (plan) {
+        subscription.nextDeliveryDate = Subscription.calculateNextDeliveryDate(plan);
+      }
+    }
+    
+    await subscription.save();
+    
+    // Update user's isSubscribed status if subscription is cancelled
+    if (status === 'cancelled') {
+      // Check if user has any other active subscriptions
+      const activeSubscriptions = await Subscription.countDocuments({
+        user: req.user.id,
+        status: 'active'
+      });
+      
+      if (activeSubscriptions === 0) {
+        await User.findByIdAndUpdate(req.user.id, { isSubscribed: false });
+      }
+    }
+    
+    res.json(subscription);
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get subscription delivery history
+router.get('/:id/history', auth, async (req, res) => {
+  try {
+    const subscription = await Subscription.findById(req.params.id)
+      .populate('deliveryHistory.items.product');
+    
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+    
+    // Check if subscription belongs to user
+    if (subscription.user.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    res.json(subscription.deliveryHistory);
+  } catch (error) {
+    console.error('Error fetching delivery history:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Return an item from subscription box
+router.post('/:id/return', auth, async (req, res) => {
+  const { deliveryIndex, itemIndex, returnReason } = req.body;
+  
+  try {
+    const subscription = await Subscription.findById(req.params.id);
+    
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+    
+    // Check if subscription belongs to user
+    if (subscription.user.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    // Check if delivery and item exist
+    if (!subscription.deliveryHistory[deliveryIndex] || 
+        !subscription.deliveryHistory[deliveryIndex].items[itemIndex]) {
+      return res.status(404).json({ message: 'Item not found in delivery history' });
+    }
+    
+    // Update item as returned
+    subscription.deliveryHistory[deliveryIndex].items[itemIndex].returned = true;
+    subscription.deliveryHistory[deliveryIndex].items[itemIndex].returnReason = returnReason;
+    subscription.deliveryHistory[deliveryIndex].items[itemIndex].returnDate = Date.now();
+    
+    await subscription.save();
+    
+    // Get the product to calculate reward points
+    const productId = subscription.deliveryHistory[deliveryIndex].items[itemIndex].product;
+    const product = await Product.findById(productId);
+    
+    let rewardPoints = 0;
+    
+    if (product) {
+      // Calculate reward points (example: 10% of product price)
+      rewardPoints = Math.round(product.price * 10);
+      
+      // Add reward points to user
+      await User.findByIdAndUpdate(
+        req.user.id, 
+        { $inc: { rewardPoints } }
+      );
+      
+      // Add returned item to second-hand marketplace
+      await Product.create({
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        price: product.price * 0.6, // 40% off original price
+        originalPrice: product.price,
+        images: product.images,
+        modelUrl: product.modelUrl,
+        colors: product.colors,
+        sizes: [{ size: product.sizes[0].size, quantity: 1 }],
+        tags: product.tags,
+        isSecondHand: true,
+        fromSubscription: true,
+        condition: 'Very Good', // Default condition for subscription returns
+        returnable: true,
+        rewardPoints: Math.round(product.price * 5) // 5x reward points for secondhand
+      });
+    }
+    
+    res.json({ 
+      message: 'Item returned successfully', 
+      rewardPoints,
+      updatedSubscription: subscription
+    });
+  } catch (error) {
+    console.error('Error returning item:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+module.exports = router;
