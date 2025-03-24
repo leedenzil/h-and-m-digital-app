@@ -215,7 +215,7 @@ const Header = () => {
               flexGrow: { xs: 1, md: 0 } 
             }}
           >
-            H&M Digital
+            H&M Evolve
           </Typography>
           
           {/* Main navigation - desktop */}

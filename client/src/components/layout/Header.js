@@ -82,7 +82,7 @@ const Header = () => {
               alignItems: 'center'
             }}
           >
-            H&M Digital
+            H&M Evolve
           </Typography>
           
           {/* Desktop Navigation */}

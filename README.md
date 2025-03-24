@@ -1,4 +1,4 @@
-# H&M Digital App
+# H&M Evolve
 
 ## Overview
 H&M Digital is a comprehensive fashion platform featuring subscription services, AR try-on, second-hand marketplace, and personalized recommendations.

@@ -619,7 +619,7 @@ const HomePage = () => {
                 opacity: 0.9
               }}
             >
-              Join H&M Digital today and discover a new way to shop, try on, and enjoy fashion. 
+              Join H&M Evolve today and discover a new way to shop, try on, and enjoy fashion. 
               Start with our subscription service or explore our second-hand marketplace.
             </Typography>
             <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -677,7 +677,7 @@ const HomePage = () => {
                 gutterBottom 
                 sx={{ fontWeight: 500 }}
               >
-                H&M Digital
+                H&M Evolve
               </Typography>
               <Typography variant="body2" color="text.secondary" paragraph>
                 Reimagining fashion for the digital age with personalized subscriptions, 
@@ -724,7 +724,7 @@ const HomePage = () => {
           </Grid>
           <Divider sx={{ my: 4 }} />
           <Typography variant="body2" color="text.secondary" align="center">
-            © {new Date().getFullYear()} H&M Digital. All rights reserved.
+            © {new Date().getFullYear()} H&M Evolve. All rights reserved.
           </Typography>
         </Container>
       </Box>
