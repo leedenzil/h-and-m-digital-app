@@ -4,6 +4,82 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const auth = require('../middleware/auth');
+const mongoose = require('mongoose');
+
+// Helper function to generate simulated delivery items
+async function generateDeliveryItems(subscription) {
+  const { packageType, tier, includeSecondHand } = subscription;
+  const numItems = packageType === 'full' ? 5 : 3;
+  
+  // Get suitable products based on package type
+  let categoryFilter = {};
+  
+  if (packageType === 'full') {
+    categoryFilter = { category: { $in: ['Shirts', 'Pants', 'Accessories'] } };
+  } else if (packageType === 'tops') {
+    categoryFilter = { category: { $in: ['Shirts', 'Sweaters'] } };
+  } else if (packageType === 'accessories') {
+    categoryFilter = { category: 'Accessories' };
+  }
+  
+  // Add quality filter based on tier
+  let priceFilter = {};
+  if (tier === 'budget') {
+    priceFilter = { price: { $lt: 30 } };
+  } else if (tier === 'mid') {
+    priceFilter = { price: { $gte: 30, $lt: 70 } };
+  } else if (tier === 'luxury') {
+    priceFilter = { price: { $gte: 70 } };
+  }
+  
+  // Add second-hand filter if applicable
+  const secondHandFilter = includeSecondHand 
+    ? {} 
+    : { isSecondHand: false };
+  
+  // Combine all filters
+  const filter = {
+    ...categoryFilter,
+    ...priceFilter,
+    ...secondHandFilter,
+    status: 'active'
+  };
+  
+  // Get products matching the criteria
+  const products = await Product.find(filter).limit(numItems * 2);
+  
+  // If not enough products, get random products
+  if (products.length < numItems) {
+    const additionalProducts = await Product.find({ status: 'active' })
+      .limit(numItems - products.length);
+    
+    products.push(...additionalProducts);
+  }
+  
+  // Select random products from the result
+  const selectedProducts = [];
+  const productIds = new Set();
+  
+  while (selectedProducts.length < numItems && products.length > 0) {
+    const randomIndex = Math.floor(Math.random() * products.length);
+    const product = products[randomIndex];
+    
+    // Ensure no duplicates
+    if (!productIds.has(product._id.toString())) {
+      productIds.add(product._id.toString());
+      selectedProducts.push(product);
+    }
+    
+    // Remove the product from the array to avoid selecting it again
+    products.splice(randomIndex, 1);
+  }
+  
+  // Create delivery items
+  return selectedProducts.map(product => ({
+    product: product._id,
+    returned: false
+  }));
+}
 
 // Get all subscription plans
 router.get('/plans', (req, res) => {
@@ -313,6 +389,52 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
+// Simulate a delivery (new route)
+router.post('/:id/simulate-delivery', auth, async (req, res) => {
+  try {
+    const subscription = await Subscription.findById(req.params.id);
+    
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+    
+    // Check if subscription belongs to user
+    if (subscription.user.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    // Generate simulated delivery items
+    const items = await generateDeliveryItems(subscription);
+    
+    // Create delivery entry
+    subscription.deliveryHistory.push({
+      date: new Date(),
+      items,
+      feedback: { rating: 0, comments: '' }
+    });
+    
+    // Update next delivery date
+    subscription.nextDeliveryDate = Subscription.calculateNextDeliveryDate(
+      subscription.plan,
+      new Date()
+    );
+    
+    await subscription.save();
+    
+    // Populate product details for response
+    const populatedSubscription = await Subscription.findById(req.params.id)
+      .populate('deliveryHistory.items.product');
+    
+    res.json({
+      message: 'Delivery simulated successfully',
+      delivery: populatedSubscription.deliveryHistory[populatedSubscription.deliveryHistory.length - 1]
+    });
+  } catch (error) {
+    console.error('Error simulating delivery:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get subscription delivery history
 router.get('/:id/history', auth, async (req, res) => {
   try {
@@ -335,7 +457,7 @@ router.get('/:id/history', auth, async (req, res) => {
   }
 });
 
-// Return an item from subscription box
+// Return an item from subscription box (updated to include analytics tracking)
 router.post('/:id/return', auth, async (req, res) => {
   const { deliveryIndex, itemIndex, returnReason } = req.body;
   
@@ -398,6 +520,55 @@ router.post('/:id/return', auth, async (req, res) => {
         returnable: true,
         rewardPoints: Math.round(product.price * 5) // 5x reward points for secondhand
       });
+    }
+    
+    // Update analytics data
+    try {
+      // Create ReturnAnalytics model if it doesn't exist
+      if (!mongoose.models.ReturnAnalytics) {
+        const returnAnalyticsSchema = new mongoose.Schema({
+          user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+          },
+          product: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Product',
+            required: true
+          },
+          subscription: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Subscription',
+            required: true
+          },
+          reason: String,
+          rewardPointsEarned: Number,
+          timestamp: {
+            type: Date,
+            default: Date.now
+          }
+        });
+        
+        mongoose.model('ReturnAnalytics', returnAnalyticsSchema);
+      }
+      
+      const ReturnAnalytics = mongoose.model('ReturnAnalytics');
+      
+      // Record return analytics
+      const returnAnalytics = new ReturnAnalytics({
+        user: req.user.id,
+        product: productId,
+        subscription: req.params.id,
+        reason: returnReason,
+        rewardPointsEarned: rewardPoints,
+        timestamp: Date.now()
+      });
+      
+      await returnAnalytics.save();
+    } catch (error) {
+      console.error('Error recording return analytics:', error);
+      // Don't return an error, just log it
     }
     
     res.json({ 

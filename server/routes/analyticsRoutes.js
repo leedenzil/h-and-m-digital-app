@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Product = require('../models/Product');
 const Subscription = require('../models/Subscription');
 const auth = require('../middleware/auth');
+const mongoose = require('mongoose');
 
 // Get user's swipe pattern analysis
 router.get('/swipe-patterns', auth, async (req, res) => {
@@ -330,6 +331,203 @@ router.get('/recommendations', auth, async (req, res) => {
     res.json(recommendationsWithScore);
   } catch (error) {
     console.error('Error generating recommendations:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// AR Usage analytics
+router.get('/ar-usage', auth, async (req, res) => {
+  try {
+    const ARUsage = mongoose.models.ARUsage;
+    
+    if (!ARUsage) {
+      return res.json({
+        totalUsage: 0,
+        totalItems: 0,
+        conversionRate: 0,
+        itemBreakdown: []
+      });
+    }
+    
+    // Get total AR usage
+    const usageSummary = await ARUsage.aggregate([
+      { $match: { user: mongoose.Types.ObjectId(req.user.id) } },
+      { $group: {
+        _id: null,
+        totalUsage: { $sum: '$duration' },
+        totalItems: { $countDistinct: '$product' },
+        totalTryOns: { $sum: 1 },
+        totalConversions: { $sum: { $cond: ['$convertedToPurchase', 1, 0] } }
+      }}
+    ]);
+    
+    // Get per-category breakdown
+    const categoryBreakdown = await ARUsage.aggregate([
+      { $match: { user: mongoose.Types.ObjectId(req.user.id) } },
+      { $lookup: {
+        from: 'products',
+        localField: 'product',
+        foreignField: '_id',
+        as: 'productDetails'
+      }},
+      { $unwind: '$productDetails' },
+      { $group: {
+        _id: '$productDetails.category',
+        totalUsage: { $sum: '$duration' },
+        totalTryOns: { $sum: 1 },
+        conversions: { $sum: { $cond: ['$convertedToPurchase', 1, 0] } }
+      }},
+      { $project: {
+        category: '$_id',
+        totalUsage: 1,
+        totalTryOns: 1,
+        conversions: 1,
+        conversionRate: { 
+          $multiply: [
+            { $divide: ['$conversions', { $max: ['$totalTryOns', 1] }] },
+            100
+          ]
+        }
+      }}
+    ]);
+    
+    res.json({
+      totalUsage: usageSummary.length > 0 ? usageSummary[0].totalUsage : 0,
+      totalItems: usageSummary.length > 0 ? usageSummary[0].totalItems : 0,
+      totalTryOns: usageSummary.length > 0 ? usageSummary[0].totalTryOns : 0,
+      conversionRate: usageSummary.length > 0 
+        ? (usageSummary[0].totalConversions / Math.max(usageSummary[0].totalTryOns, 1)) * 100 
+        : 0,
+      categoryBreakdown
+    });
+  } catch (error) {
+    console.error('Error fetching AR usage analytics:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Return reasons analytics
+router.get('/return-reasons', auth, async (req, res) => {
+  try {
+    const ReturnAnalytics = mongoose.models.ReturnAnalytics;
+    
+    if (!ReturnAnalytics) {
+      return res.json([]);
+    }
+    
+    const reasonAnalytics = await ReturnAnalytics.aggregate([
+      { $match: { user: mongoose.Types.ObjectId(req.user.id) } },
+      { $group: {
+        _id: '$reason',
+        count: { $sum: 1 },
+        totalPoints: { $sum: '$rewardPointsEarned' }
+      }},
+      { $sort: { count: -1 } },
+      { $project: {
+        reason: '$_id',
+        count: 1,
+        totalPoints: 1
+      }}
+    ]);
+    
+    res.json(reasonAnalytics);
+  } catch (error) {
+    console.error('Error fetching return reasons analytics:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// User behavior summary
+router.get('/behavior-summary', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Calculate swipe data
+    const totalSwiped = user.swipedItems.length;
+    const totalLiked = user.swipedItems.filter(item => item.liked).length;
+    const swipeRightRate = totalSwiped > 0 ? (totalLiked / totalSwiped) * 100 : 0;
+    
+    // Get subscription data
+    const subscriptions = await Subscription.find({ user: req.user.id });
+    const totalSubscriptions = subscriptions.length;
+    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'active').length;
+    
+    // Get return data
+    const ReturnAnalytics = mongoose.models.ReturnAnalytics;
+    let totalReturns = 0;
+    let totalReturnPoints = 0;
+    
+    if (ReturnAnalytics) {
+      const returnStats = await ReturnAnalytics.aggregate([
+        { $match: { user: mongoose.Types.ObjectId(req.user.id) } },
+        { $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalPoints: { $sum: '$rewardPointsEarned' }
+        }}
+      ]);
+      
+      if (returnStats.length > 0) {
+        totalReturns = returnStats[0].count;
+        totalReturnPoints = returnStats[0].totalPoints;
+      }
+    }
+    
+    // Get purchase data
+    const Purchase = mongoose.models.Purchase;
+    let totalPurchases = 0;
+    let totalSpent = 0;
+    let pointsUsedForPurchases = 0;
+    
+    if (Purchase) {
+      const purchaseStats = await Purchase.aggregate([
+        { $match: { user: mongoose.Types.ObjectId(req.user.id) } },
+        { $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalSpent: { $sum: { $multiply: ['$price', '$quantity'] } },
+          pointsUsed: { $sum: '$rewardPointsUsed' }
+        }}
+      ]);
+      
+      if (purchaseStats.length > 0) {
+        totalPurchases = purchaseStats[0].count;
+        totalSpent = purchaseStats[0].totalSpent;
+        pointsUsedForPurchases = purchaseStats[0].pointsUsed;
+      }
+    }
+    
+    res.json({
+      swipeActivity: {
+        totalSwiped,
+        totalLiked,
+        swipeRightRate
+      },
+      subscriptionActivity: {
+        totalSubscriptions,
+        activeSubscriptions
+      },
+      returnActivity: {
+        totalReturns,
+        totalReturnPoints
+      },
+      purchaseActivity: {
+        totalPurchases,
+        totalSpent,
+        pointsUsedForPurchases
+      },
+      rewardPoints: {
+        currentBalance: user.rewardPoints,
+        totalEarned: totalReturnPoints,
+        totalSpent: pointsUsedForPurchases
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching behavior summary:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

@@ -582,31 +582,58 @@ export default function SwipeFeature() {
     if (filteredProducts.length === 0 || currentIndex >= filteredProducts.length) {
       return;
     }
-
+  
     const swiped = filteredProducts[currentIndex];
-
+  
     // Save the swiped product and direction for potential rewind
     setLastSwipedProduct(swiped);
     setLastSwipeDirection(direction);
     setCanRewind(true);
-
+  
+    // Determine if it's a like based on direction
+    const liked = direction === 'right' || direction === 'up';
+  
+    // Make actual API call to record the swipe
+    fetch('/api/swipe/record', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token')
+      },
+      body: JSON.stringify({
+        productId: swiped._id,
+        liked: liked
+      })
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Swipe recorded in database:', data);
+    })
+    .catch(error => {
+      console.error('Error recording swipe:', error);
+    });
+  
     if (direction === 'right') {
       // User liked the product
       setLikedProducts(prev => [...prev, swiped]);
-
+  
       // Show success message
       setSnackbar({
         open: true,
         message: `Added ${swiped.name} to your favorites!`,
         severity: 'success'
       });
-
-      // Record swipe in API (in a real app)
+  
       console.log('Liked:', swiped);
     } else if (direction === 'left') {
-      // Record dislike in API (in a real app)
+      // Record dislike
       console.log('Disliked:', swiped);
-
+  
       // Optional feedback
       setSnackbar({
         open: true,
@@ -616,17 +643,16 @@ export default function SwipeFeature() {
     } else if (direction === 'up') {
       // Super like
       setLikedProducts(prev => [...prev, swiped]);
-
-      // Record super like in API (in a real app)
+  
       console.log('Super Liked:', swiped);
-
+  
       setSnackbar({
         open: true,
         message: `Super liked ${swiped.name}!`,
         severity: 'success'
       });
     }
-
+  
     // Move to the next product
     if (currentIndex < filteredProducts.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -638,14 +664,14 @@ export default function SwipeFeature() {
         // For demo purposes, we'll just shuffle the existing ones
         const shuffled = [...products].sort(() => 0.5 - Math.random());
         setProducts(shuffled);
-
+  
         // Reapply filters
         let filtered = [...shuffled];
         if (filterOptions.category !== 'All Categories') {
           filtered = filtered.filter(p => p.category === filterOptions.category);
         }
         // Apply other filters similarly...
-
+  
         setFilteredProducts(filtered);
         setCurrentIndex(0);
         setLoading(false);

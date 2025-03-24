@@ -16,6 +16,8 @@ const swipeRoutes = require('./routes/swipeRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const productRoutes = require('./routes/productRoutes');
 const modelRoutes = require('./routes/modelRoutes');
+const arRoutes = require('./routes/arRoutes');
+
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +41,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/products', marketplaceRoutes);
 app.use('/api/swipe', swipeRoutes);
 app.use('/api/models', modelRoutes);
+app.use('/api/ar', arRoutes);
+
 
 // MongoDB Connection
 
