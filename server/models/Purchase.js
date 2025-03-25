@@ -1,4 +1,5 @@
-// Create file: server/models/Purchase.js
+// Update the Purchase model in server/models/Purchase.js
+
 const mongoose = require('mongoose');
 
 const PurchaseSchema = new mongoose.Schema({
@@ -10,6 +11,11 @@ const PurchaseSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
+    required: true
+  },
+  // Add orderId field to group purchases together
+  orderId: {
+    type: String,
     required: true
   },
   quantity: {

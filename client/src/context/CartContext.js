@@ -21,6 +21,14 @@ export const CartProvider = ({ children }) => {
     }
   });
 
+  // Add checkout status state
+  const [checkoutStatus, setCheckoutStatus] = useState({
+    loading: false,
+    error: null,
+    success: false,
+    orderId: null
+  });
+
   // Save to localStorage whenever cart changes
   useEffect(() => {
     try {
@@ -42,7 +50,12 @@ export const CartProvider = ({ children }) => {
         : item.image || '/placeholder.jpg',
       size: item.size || (item.sizes && item.sizes.length > 0 ? 
         (typeof item.sizes[0] === 'object' ? item.sizes[0].size : item.sizes[0]) : 'One Size'),
-      quantity: item.quantity || 1
+      quantity: item.quantity || 1,
+      // Add additional properties that might be useful during checkout
+      category: item.category || '',
+      condition: item.condition || 'New',
+      isSecondHand: item.isSecondHand || false,
+      rewardPoints: item.rewardPoints || Math.round(parseFloat(item.price) * 10)
     };
     
     setCart(prevCart => {
@@ -99,14 +112,13 @@ export const CartProvider = ({ children }) => {
   };
 
   // Calculate total price
-  
-const getCartTotal = () => {
-  if (!cart || cart.length === 0) return 0;
-  return cart.reduce(
-    (total, item) => total + (parseFloat(item.price || 0) * (item.quantity || 1)),
-    0
-  );
-};
+  const getCartTotal = () => {
+    if (!cart || cart.length === 0) return 0;
+    return cart.reduce(
+      (total, item) => total + (parseFloat(item.price || 0) * (item.quantity || 1)),
+      0
+    );
+  };
 
   // Get total number of items in cart
   const getCartCount = () => {
@@ -130,6 +142,111 @@ const getCartTotal = () => {
     });
   };
 
+  // Process checkout with a single order ID for all items
+  const checkout = async (shippingInfo, paymentInfo) => {
+    // Reset checkout status
+    setCheckoutStatus({
+      loading: true,
+      error: null,
+      success: false,
+      orderId: null
+    });
+
+    if (cart.length === 0) {
+      setCheckoutStatus({
+        loading: false,
+        error: 'Cart is empty',
+        success: false,
+        orderId: null
+      });
+      return { success: false, message: 'Cart is empty' };
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Not authenticated. Please log in.');
+      }
+
+      // Generate a single order ID for all items in this checkout
+      // Format: ORD-YYYYMMDD-TIMESTAMP-RANDOMCHARS
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      const timestamp = now.getTime();
+      const randomChars = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const orderId = `ORD-${dateStr}-${timestamp}-${randomChars}`;
+      
+      const results = [];
+
+      // Process each cart item with the same order ID
+      for (const item of cart) {
+        const purchaseData = {
+          productId: item.id,
+          quantity: item.quantity,
+          useRewardPoints: paymentInfo?.useRewardPoints || false,
+          rewardPointsUsed: paymentInfo?.rewardPointsUsed || 0,
+          orderId: orderId // Use the same order ID for all items
+        };
+        
+        // Make the API call
+        const response = await fetch('http://localhost:5001/api/marketplace/purchase', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': token
+          },
+          body: JSON.stringify(purchaseData)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to process purchase');
+        }
+
+        const data = await response.json();
+        results.push(data);
+      }
+      
+      // Clear the cart after successful checkout
+      clearCart();
+      
+      // Update checkout status
+      setCheckoutStatus({
+        loading: false,
+        error: null,
+        success: true,
+        orderId: orderId
+      });
+      
+      return { 
+        success: true, 
+        message: 'Checkout completed successfully',
+        orderId: orderId,
+        results: results
+      };
+    } catch (error) {
+      console.error('Error during checkout:', error);
+      
+      setCheckoutStatus({
+        loading: false,
+        error: error.message || 'Failed to complete checkout',
+        success: false,
+        orderId: null
+      });
+      
+      return { 
+        success: false, 
+        message: error.message || 'Failed to complete checkout' 
+      };
+    }
+  };
+
+  // Calculate total reward points
+  const getTotalRewardPoints = () => {
+    return cart.reduce((total, item) => 
+      total + ((item.rewardPoints || Math.round(parseFloat(item.price) * 10)) * item.quantity), 0);
+  };
+
   // Context value
   const value = {
     cart,
@@ -140,8 +257,10 @@ const getCartTotal = () => {
     clearCart,
     getCartTotal,
     getCartCount,
-    // Add getCartSize as an alias for getCartCount for backward compatibility
-    getCartSize: getCartCount
+    getCartSize: getCartCount, // Alias for backward compatibility
+    checkout,
+    checkoutStatus,
+    getTotalRewardPoints
   };
 
   return (

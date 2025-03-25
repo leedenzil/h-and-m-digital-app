@@ -65,8 +65,15 @@ const countries = [
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { cart, getCartTotal, removeFromCart, updateQuantity, clearCart } = useCart();
-  const { user, isAuthenticated } = useContext(AuthContext);
+  const { 
+    cart, 
+    getCartTotal, 
+    removeFromCart, 
+    updateQuantity, 
+    clearCart, 
+    checkout 
+  } = useCart();
+    const { user, isAuthenticated } = useContext(AuthContext);
   
   // Safe formatter function
   const safeToFixed = (value, digits = 2) => {
@@ -262,42 +269,36 @@ export default function CheckoutPage() {
     setError(null);
     
     try {
-      // Get token from localStorage
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Not authenticated. Please log in.');
-      }
+      // Prepare shipping information
+      const shippingData = {
+        firstName: shippingInfo.firstName,
+        lastName: shippingInfo.lastName,
+        address: shippingInfo.address1,
+        address2: shippingInfo.address2,
+        city: shippingInfo.city,
+        state: shippingInfo.state,
+        zipCode: shippingInfo.zipCode,
+        country: shippingInfo.country,
+        phone: shippingInfo.phone,
+        email: shippingInfo.email
+      };
       
-      // Process each cart item as a separate purchase
-      for (const item of cart) {
-        const purchaseData = {
-          productId: item.id,
-          quantity: item.quantity,
-          useRewardPoints: useRewardPoints,
-          rewardPointsUsed: useRewardPoints ? Math.min(userRewardPoints, getCartTotal() * 10) : 0
-        };
-        
-        // Make the API call
-        const response = await fetch('http://localhost:5001/api/marketplace/purchase', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-auth-token': token
-          },
-          body: JSON.stringify(purchaseData)
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Failed to process purchase');
-        }
-      }
+      // Prepare payment information
+      const paymentInfo = {
+        method: paymentMethod,
+        useRewardPoints: useRewardPoints,
+        rewardPointsUsed: useRewardPoints ? Math.min(userRewardPoints, getCartTotal() * 10) : 0
+      };
       
-      // If all purchases were successful, clear the cart and proceed
-      clearCart();
+      // Use the checkout function from CartContext
+      const result = await checkout(shippingInfo, paymentInfo);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to place order');
+      }
       
       // Set order details for the confirmation page
-      setOrderId('ORD' + Math.floor(Math.random() * 10000000));
+      setOrderId(result.orderId);
       setOrderDate(new Date().toISOString());
       
       // Set estimated delivery date (current date + 7 days)

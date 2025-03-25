@@ -15,10 +15,6 @@ import {
   IconButton,
   Tabs,
   Tab,
-  List,
-  ListItem,
-  ListItemText,
-  Chip,
   Table,
   TableBody,
   TableCell,
@@ -26,7 +22,9 @@ import {
   TableHead,
   TableRow,
   Collapse,
-  TablePagination
+  TablePagination,
+  Chip,
+  Rating
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
@@ -35,7 +33,6 @@ import PersonIcon from '@mui/icons-material/Person';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import HistoryIcon from '@mui/icons-material/History';
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { AuthContext } from '../../context/AuthContext';
@@ -78,7 +75,7 @@ function OrderRow({ order, index }) {
           </IconButton>
         </TableCell>
         <TableCell component="th" scope="row">
-          {order.id}
+          {order._id}
         </TableCell>
         <TableCell>{new Date(order.date).toLocaleDateString()}</TableCell>
         <TableCell>
@@ -135,7 +132,7 @@ function OrderRow({ order, index }) {
                           </Box>
                         </Box>
                       </TableCell>
-                      <TableCell>{item.size}</TableCell>
+                      <TableCell>{item.size || 'Standard'}</TableCell>
                       <TableCell align="right">${parseFloat(item.price).toFixed(2)}</TableCell>
                       <TableCell align="right">{item.quantity}</TableCell>
                       <TableCell align="right">
@@ -173,26 +170,24 @@ function OrderRow({ order, index }) {
                   <Grid item xs={12} sm={6}>
                     <Typography variant="subtitle2">Payment Method:</Typography>
                     <Typography variant="body2">
-                      {order.paymentMethod === 'reward_points' 
+                      {order.useRewardPoints 
                         ? 'Reward Points' 
-                        : order.paymentMethod === 'credit_card'
-                          ? 'Credit Card'
-                          : 'PayPal'}
+                        : 'Credit Card'}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    {order.paymentMethod === 'reward_points' ? (
+                    {order.useRewardPoints ? (
                       <>
                         <Typography variant="subtitle2">Reward Points Used:</Typography>
                         <Typography variant="body2" color="primary.main" fontWeight="medium">
-                          {order.rewardPointsUsed?.toLocaleString() || 0} points
+                          {(order.rewardPointsUsed || 0).toLocaleString()} points
                         </Typography>
                       </>
                     ) : (
                       <>
                         <Typography variant="subtitle2">Reward Points Earned:</Typography>
                         <Typography variant="body2" color="primary.main" fontWeight="medium">
-                          {order.rewardPointsEarned?.toLocaleString() || 0} points
+                          {(order.rewardPointsEarned || 0).toLocaleString()} points
                         </Typography>
                       </>
                     )}
@@ -200,22 +195,24 @@ function OrderRow({ order, index }) {
                 </Grid>
               </Box>
               
-              {/* Shipping address */}
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2">Shipping Address:</Typography>
-                <Typography variant="body2">
-                  {order.shippingInfo?.firstName} {order.shippingInfo?.lastName}
-                </Typography>
-                <Typography variant="body2">
-                  {order.shippingInfo?.address}
-                </Typography>
-                <Typography variant="body2">
-                  {order.shippingInfo?.city}, {order.shippingInfo?.state} {order.shippingInfo?.zipCode}
-                </Typography>
-                <Typography variant="body2">
-                  {order.shippingInfo?.country}
-                </Typography>
-              </Box>
+              {/* Add shipping address if available */}
+              {order.shippingInfo && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2">Shipping Address:</Typography>
+                  <Typography variant="body2">
+                    {order.shippingInfo.firstName} {order.shippingInfo.lastName}
+                  </Typography>
+                  <Typography variant="body2">
+                    {order.shippingInfo.address}
+                  </Typography>
+                  <Typography variant="body2">
+                    {order.shippingInfo.city}, {order.shippingInfo.state} {order.shippingInfo.zipCode}
+                  </Typography>
+                  <Typography variant="body2">
+                    {order.shippingInfo.country}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           </Collapse>
         </TableCell>
@@ -235,9 +232,11 @@ const ProfilePage = () => {
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orders, setOrders] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     firstName: '',
@@ -245,7 +244,7 @@ const ProfilePage = () => {
     email: '',
     profileImage: ''
   });
-  
+
   // Load user data into form when available
   useEffect(() => {
     if (user) {
@@ -257,81 +256,161 @@ const ProfilePage = () => {
       });
     }
   }, [user]);
-  
-  // Fetch order history from localStorage or API
-  useEffect(() => {
-    if (activeTab === 2) {
-      setLoadingOrders(true);
-      
-      // Get orders from localStorage (in a real app, this would be an API call)
-      const savedOrders = localStorage.getItem('orderHistory');
-      if (savedOrders) {
-        try {
-          // Sort orders by date (newest first)
-          const parsedOrders = JSON.parse(savedOrders);
-          parsedOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
-          setOrders(parsedOrders);
-        } catch (error) {
-          console.error('Error parsing order history:', error);
-          setOrders([]);
-        }
-      } else {
-        // Use sample data if no orders found
-        setOrders([
-          {
-            id: 'ORD123456',
-            date: '2023-10-15',
-            items: [
-              { id: '1', name: 'Cotton T-Shirt', price: 19.99, quantity: 1, category: 'Shirts', size: 'M', image: '/api/placeholder/40/40' },
-              { id: '2', name: 'Slim Jeans', price: 39.99, quantity: 1, category: 'Pants', size: '32', image: '/api/placeholder/40/40' }
-            ],
-            subtotal: 59.98,
-            shippingCost: 4.99,
-            total: 64.97,
-            status: 'Delivered',
-            paymentMethod: 'credit_card',
-            rewardPointsEarned: 600
-          }
-        ]);
-      }
-      
-      setLoadingOrders(false);
-    }
-  }, [activeTab]);
 
-  // Fetch subscription data
+  // Fetch subscription data from API
   useEffect(() => {
     const fetchSubscriptions = async () => {
       if (activeTab === 1) {
         setLoadingSubscriptions(true);
         try {
-          // Mock data for this demo
-          setTimeout(() => {
-            setSubscriptions([
-              {
-                _id: '1',
-                packageType: 'full',
-                plan: 'monthly',
-                tier: 'mid',
-                status: 'active',
-                nextDeliveryDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-                price: {
-                  total: 89.99
-                }
-              }
-            ]);
-            setLoadingSubscriptions(false);
-          }, 800);
+          const token = localStorage.getItem('token');
+          if (!token) {
+            throw new Error('Authentication token not found');
+          }
+
+          const response = await fetch('http://localhost:5001/api/subscriptions/user', {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              // No active subscription found, which is normal
+              setSubscriptions([]);
+              return;
+            }
+            throw new Error(`Error fetching subscriptions: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log('Subscription data:', data);
+
+          // If data is an array, use it directly, otherwise wrap it in an array
+          setSubscriptions(Array.isArray(data) ? data : [data]);
         } catch (error) {
           console.error('Error fetching subscriptions:', error);
+          setError(`Failed to load subscription data: ${error.message}`);
+
+          // Set empty array if error occurs
+          setSubscriptions([]);
+        } finally {
           setLoadingSubscriptions(false);
         }
       }
     };
-    
+
     fetchSubscriptions();
   }, [activeTab]);
+
+  // Fetch order history from API
+
+  useEffect(() => {
+    const fetchOrderHistory = async () => {
+      if (activeTab === 2) {
+        setLoadingOrders(true);
+        try {
+          const token = localStorage.getItem('token');
+          if (!token) {
+            throw new Error('Authentication token not found');
+          }
+          
+          // Get purchases from the marketplace API
+          const response = await fetch('http://localhost:5001/api/marketplace/purchases', {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Error fetching order history: ${response.status}`);
+          }
+          
+          // The backend now returns already grouped orders by orderId
+          const orders = await response.json();
+          console.log('Order history data:', orders);
+          
+          setOrders(orders);
+        } catch (error) {
+          console.error('Error with order history:', error);
+          setError(`Failed to load order history: ${error.message}`);
+          setOrders([]);
+        } finally {
+          setLoadingOrders(false);
+        }
+      }
+    };
+    
+    fetchOrderHistory();
+  }, [activeTab]);
   
+
+  // Fetch delivery data from subscriptions
+  useEffect(() => {
+    const fetchDeliveries = async () => {
+      if (activeTab === 3) {
+        setLoadingDeliveries(true);
+        try {
+          const token = localStorage.getItem('token');
+          if (!token) {
+            throw new Error('Authentication token not found');
+          }
+
+          // Get all active subscriptions first
+          const subsResponse = await fetch('http://localhost:5001/api/subscriptions/user', {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+
+          if (!subsResponse.ok) {
+            if (subsResponse.status === 404) {
+              // No active subscription found, which is normal
+              setDeliveries([]);
+              return;
+            }
+            throw new Error(`Error fetching subscriptions: ${subsResponse.status}`);
+          }
+
+          const subsData = await subsResponse.json();
+          const subscriptionData = Array.isArray(subsData) ? subsData : [subsData];
+
+          // Extract delivery history from each subscription
+          let allDeliveries = [];
+
+          for (const subscription of subscriptionData) {
+            if (subscription._id && subscription.deliveryHistory && subscription.deliveryHistory.length > 0) {
+              // Fetch detailed delivery history for this subscription
+              const historyResponse = await fetch(`http://localhost:5001/api/subscriptions/${subscription._id}/history`, {
+                headers: {
+                  'x-auth-token': token
+                }
+              });
+
+              if (historyResponse.ok) {
+                const historyData = await historyResponse.json();
+                allDeliveries = [...allDeliveries, ...historyData];
+              }
+            }
+          }
+
+          // Sort deliveries by date, newest first
+          allDeliveries.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+          setDeliveries(allDeliveries);
+        } catch (error) {
+          console.error('Error fetching deliveries:', error);
+          setError(`Failed to load delivery data: ${error.message}`);
+          setDeliveries([]);
+        } finally {
+          setLoadingDeliveries(false);
+        }
+      }
+    };
+
+    fetchDeliveries();
+  }, [activeTab]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({
@@ -339,11 +418,11 @@ const ProfilePage = () => {
       [name]: value
     });
   };
-  
+
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
-  
+
   const handleEditToggle = () => {
     if (editing) {
       // If canceling edit, reset form to user data
@@ -359,12 +438,12 @@ const ProfilePage = () => {
     setError(null);
     setSuccess(false);
   };
-  
+
   const handleSubmit = async () => {
     setLoading(true);
     setError(null);
     setSuccess(false);
-    
+
     try {
       // Call updateProfile from AuthContext
       await updateProfile({
@@ -372,7 +451,7 @@ const ProfilePage = () => {
         lastName: formData.lastName,
         profileImage: formData.profileImage
       });
-      
+
       setSuccess(true);
       setEditing(false);
     } catch (error) {
@@ -391,7 +470,7 @@ const ProfilePage = () => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-  
+
   if (!user) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
@@ -399,13 +478,13 @@ const ProfilePage = () => {
       </Box>
     );
   }
-  
+
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>
         Your Profile
       </Typography>
-      
+
       <Grid container spacing={3}>
         {/* Left side - Profile info */}
         <Grid item xs={12} md={4}>
@@ -418,31 +497,30 @@ const ProfilePage = () => {
               >
                 {!user.profileImage && user.firstName ? user.firstName.charAt(0) : <PersonIcon />}
               </Avatar>
-              
+
               <Typography variant="h5">
                 {user.firstName} {user.lastName}
               </Typography>
-              
+
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 {user.email}
               </Typography>
-              
+
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-                <Chip 
-                  label={`${user.rewardPoints?.toLocaleString() || '0'} Reward Points`} 
-                  color="primary" 
+                <Chip
+                  label={`${user.rewardPoints?.toLocaleString() || '0'} Reward Points`}
+                  color="primary"
                   sx={{ fontSize: '1rem', py: 2 }}
-                  icon={<LocalOfferIcon />}
                 />
               </Box>
-              
+
               <Divider sx={{ width: '100%', mb: 2 }} />
-              
+
               <Box sx={{ width: '100%' }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Account Details
                 </Typography>
-                
+
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="body2" color="text.secondary">
                     Member Since
@@ -451,18 +529,18 @@ const ProfilePage = () => {
                     {new Date(user.createdAt || new Date()).toLocaleDateString()}
                   </Typography>
                 </Box>
-                
+
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="body2" color="text.secondary">
                     Subscription Status
                   </Typography>
-                  <Chip 
-                    label={user.isSubscribed ? 'Active' : 'Inactive'} 
-                    color={user.isSubscribed ? 'success' : 'default'} 
-                    size="small" 
+                  <Chip
+                    label={user.isSubscribed ? 'Active' : 'Inactive'}
+                    color={user.isSubscribed ? 'success' : 'default'}
+                    size="small"
                   />
                 </Box>
-                
+
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="body2" color="text.secondary">
                     Orders Placed
@@ -475,39 +553,39 @@ const ProfilePage = () => {
             </Box>
           </Paper>
         </Grid>
-        
+
         {/* Right side - Tabs and content */}
         <Grid item xs={12} md={8}>
           <Paper elevation={2}>
-            <Tabs 
-              value={activeTab} 
+            <Tabs
+              value={activeTab}
               onChange={handleTabChange}
               indicatorColor="primary"
               textColor="primary"
               sx={{ borderBottom: 1, borderColor: 'divider' }}
             >
-              <Tab 
-                label="Profile" 
-                icon={<PersonIcon />} 
-                iconPosition="start" 
+              <Tab
+                label="Profile"
+                icon={<PersonIcon />}
+                iconPosition="start"
               />
-              <Tab 
-                label="Subscriptions" 
-                icon={<CardGiftcardIcon />} 
-                iconPosition="start" 
+              <Tab
+                label="Subscriptions"
+                icon={<CardGiftcardIcon />}
+                iconPosition="start"
               />
-              <Tab 
-                label="Order History" 
-                icon={<HistoryIcon />} 
-                iconPosition="start" 
+              <Tab
+                label="Order History"
+                icon={<HistoryIcon />}
+                iconPosition="start"
               />
-              <Tab 
-                label="Deliveries" 
-                icon={<LocalShippingIcon />} 
-                iconPosition="start" 
+              <Tab
+                label="Deliveries"
+                icon={<LocalShippingIcon />}
+                iconPosition="start"
               />
             </Tabs>
-            
+
             {/* Profile Info Tab */}
             <TabPanel value={activeTab} index={0}>
               <Box sx={{ p: 2 }}>
@@ -516,25 +594,25 @@ const ProfilePage = () => {
                     Profile updated successfully!
                   </Alert>
                 )}
-                
+
                 {error && (
                   <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                   </Alert>
                 )}
-                
+
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                   <Typography variant="h6">
                     Personal Information
                   </Typography>
-                  <IconButton 
-                    color={editing ? 'error' : 'primary'} 
+                  <IconButton
+                    color={editing ? 'error' : 'primary'}
                     onClick={handleEditToggle}
                   >
                     {editing ? <CloseIcon /> : <EditIcon />}
                   </IconButton>
                 </Box>
-                
+
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -585,18 +663,18 @@ const ProfilePage = () => {
                     />
                   </Grid>
                 </Grid>
-                
+
                 {editing && (
                   <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Button 
-                      variant="outlined" 
-                      onClick={handleEditToggle} 
+                    <Button
+                      variant="outlined"
+                      onClick={handleEditToggle}
                       sx={{ mr: 2 }}
                     >
                       Cancel
                     </Button>
-                    <Button 
-                      variant="contained" 
+                    <Button
+                      variant="contained"
                       color="primary"
                       startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
                       onClick={handleSubmit}
@@ -608,7 +686,7 @@ const ProfilePage = () => {
                 )}
               </Box>
             </TabPanel>
-            
+
             {/* Subscriptions Tab */}
             <TabPanel value={activeTab} index={1}>
               {loadingSubscriptions ? (
@@ -622,15 +700,15 @@ const ProfilePage = () => {
                       <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                           <Typography variant="h6">
-                            {subscription.packageType === 'full' ? 'Full Set' : 
-                             subscription.packageType === 'tops' ? 'Tops Only' : 'Accessories Only'}
+                            {subscription.packageType === 'full' ? 'Full Set' :
+                              subscription.packageType === 'tops' ? 'Tops Only' : 'Accessories Only'}
                           </Typography>
-                          <Chip 
-                            label={subscription.status || 'Active'} 
-                            color={subscription.status === 'active' ? 'success' : 'default'} 
+                          <Chip
+                            label={subscription.status || 'Active'}
+                            color={subscription.status === 'active' ? 'success' : 'default'}
                           />
                         </Box>
-                        
+
                         <Grid container spacing={2}>
                           <Grid item xs={6} sm={3}>
                             <Typography variant="body2" color="text.secondary">
@@ -645,8 +723,8 @@ const ProfilePage = () => {
                               Quality Tier
                             </Typography>
                             <Typography variant="body1">
-                              {subscription.tier === 'budget' ? 'Budget Friendly' : 
-                               subscription.tier === 'mid' ? 'Premium Selection' : 'Luxury Collection'}
+                              {subscription.tier === 'budget' ? 'Budget Friendly' :
+                                subscription.tier === 'mid' ? 'Premium Selection' : 'Luxury Collection'}
                             </Typography>
                           </Grid>
                           <Grid item xs={6} sm={3}>
@@ -666,19 +744,19 @@ const ProfilePage = () => {
                             </Typography>
                           </Grid>
                         </Grid>
-                        
+
                         <Divider sx={{ my: 2 }} />
-                        
+
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                          <Button 
-                            variant="outlined" 
+                          <Button
+                            variant="outlined"
                             color="primary"
                             href={`/subscription/details/${subscription._id}`}
                           >
                             View Details
                           </Button>
-                          <Button 
-                            variant="contained" 
+                          <Button
+                            variant="contained"
                             color={subscription.status === 'active' ? 'warning' : 'primary'}
                           >
                             {subscription.status === 'active' ? 'Pause Subscription' : 'Resume Subscription'}
@@ -693,8 +771,8 @@ const ProfilePage = () => {
                   <Typography variant="h6" color="text.secondary" gutterBottom>
                     No active subscriptions
                   </Typography>
-                  <Button 
-                    variant="contained" 
+                  <Button
+                    variant="contained"
                     color="primary"
                     href="/subscription"
                     sx={{ mt: 2 }}
@@ -704,7 +782,7 @@ const ProfilePage = () => {
                 </Box>
               )}
             </TabPanel>
-            
+
             {/* Order History Tab */}
             <TabPanel value={activeTab} index={2}>
               {loadingOrders ? (
@@ -732,7 +810,7 @@ const ProfilePage = () => {
                         {orders
                           .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                           .map((order, index) => (
-                            <OrderRow key={order.id} order={order} index={index} />
+                            <OrderRow key={order._id || order.id} order={order} index={index} />
                           ))}
                       </TableBody>
                     </Table>
@@ -752,8 +830,8 @@ const ProfilePage = () => {
                   <Typography variant="h6" color="text.secondary" gutterBottom>
                     No order history found
                   </Typography>
-                  <Button 
-                    variant="contained" 
+                  <Button
+                    variant="contained"
                     color="primary"
                     href="/marketplace"
                     sx={{ mt: 2 }}
@@ -763,25 +841,129 @@ const ProfilePage = () => {
                 </Box>
               )}
             </TabPanel>
-            
+
             {/* Deliveries Tab */}
             <TabPanel value={activeTab} index={3}>
-              <Box sx={{ textAlign: 'center', p: 3 }}>
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  No upcoming deliveries
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  Your delivery information will appear here once you have an active subscription.
-                </Typography>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  href="/subscription"
-                  sx={{ mt: 2 }}
-                >
-                  Start a Subscription
-                </Button>
-              </Box>
+              {loadingDeliveries ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                  <CircularProgress />
+                </Box>
+              ) : deliveries.length > 0 ? (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Subscription Deliveries
+                  </Typography>
+
+                  {deliveries.map((delivery, index) => (
+                    <Card key={index} sx={{ mb: 3 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                          <Typography variant="subtitle1">
+                            Delivery Date: {new Date(delivery.date).toLocaleDateString()}
+                          </Typography>
+                          <Chip
+                            label={delivery.items.some(item => item.returned) ? 'Partially Returned' : 'Delivered'}
+                            color={delivery.items.some(item => item.returned) ? 'warning' : 'success'}
+                            size="small"
+                          />
+                        </Box>
+
+                        <Typography variant="subtitle2" gutterBottom>
+                          Items Received:
+                        </Typography>
+
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Item</TableCell>
+                                <TableCell>Status</TableCell>
+                                <TableCell align="right">Action</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {delivery.items.map((item, itemIndex) => (
+                                <TableRow key={itemIndex}>
+                                  <TableCell>
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      <Avatar
+                                        variant="square"
+                                        src={item.product?.images?.[0]?.url || '/api/placeholder/40/40'}
+                                        sx={{ width: 40, height: 40, mr: 1 }}
+                                      />
+                                      <Box>
+                                        <Typography variant="body2">
+                                          {item.product?.name || 'Product'}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          {item.product?.category || ''}
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={item.returned ? 'Returned' : 'Kept'}
+                                      color={item.returned ? 'default' : 'success'}
+                                      size="small"
+                                    />
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    {!item.returned && (
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                      >
+                                        Return Item
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+
+                        {delivery.feedback && delivery.feedback.rating > 0 && (
+                          <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Your Feedback:
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <Typography variant="body2" sx={{ mr: 1 }}>
+                                Rating:
+                              </Typography>
+                              <Rating value={delivery.feedback.rating} readOnly size="small" />
+                            </Box>
+                            {delivery.feedback.comments && (
+                              <Typography variant="body2">
+                                "{delivery.feedback.comments}"
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Box>
+              ) : (
+                <Box sx={{ textAlign: 'center', p: 3 }}>
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No delivery history found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    Your delivery information will appear here once you receive items from your subscription.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    href="/subscription"
+                    sx={{ mt: 2 }}
+                  >
+                    Start a Subscription
+                  </Button>
+                </Box>
+              )}
             </TabPanel>
           </Paper>
         </Grid>
