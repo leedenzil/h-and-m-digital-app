@@ -262,17 +262,42 @@ export default function CheckoutPage() {
     setError(null);
     
     try {
-      // In a real app, this would be an API call to place the order
-      // For now, simulate a successful order
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Not authenticated. Please log in.');
+      }
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Process each cart item as a separate purchase
+      for (const item of cart) {
+        const purchaseData = {
+          productId: item.id,
+          quantity: item.quantity,
+          useRewardPoints: useRewardPoints,
+          rewardPointsUsed: useRewardPoints ? Math.min(userRewardPoints, getCartTotal() * 10) : 0
+        };
+        
+        // Make the API call
+        const response = await fetch('http://localhost:5001/api/marketplace/purchase', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': token
+          },
+          body: JSON.stringify(purchaseData)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to process purchase');
+        }
+      }
       
-      // Generate a random order ID
-      const newOrderId = 'ORD' + Math.floor(Math.random() * 10000000);
+      // If all purchases were successful, clear the cart and proceed
+      clearCart();
       
-      // Set order details
-      setOrderId(newOrderId);
+      // Set order details for the confirmation page
+      setOrderId('ORD' + Math.floor(Math.random() * 10000000));
       setOrderDate(new Date().toISOString());
       
       // Set estimated delivery date (current date + 7 days)
@@ -280,24 +305,16 @@ export default function CheckoutPage() {
       deliveryDate.setDate(deliveryDate.getDate() + 7);
       setEstimatedDelivery(deliveryDate.toISOString());
       
-      // If using reward points, deduct them from user's account
-      if (useRewardPoints) {
-        setUserRewardPoints(prev => prev - getCartRewardPoints());
-      }
-      
       // Move to confirmation step
       setActiveStep(3);
       
-      // Clear the cart
-      clearCart();
-      
     } catch (error) {
       console.error('Error placing order:', error);
-      setError('Failed to place order. Please try again.');
+      setError(error.message || 'Failed to place order. Please try again.');
       
       setSnackbar({
         open: true,
-        message: 'Failed to place order. Please try again.',
+        message: error.message || 'Failed to place order. Please try again.',
         severity: 'error'
       });
     } finally {

@@ -40,9 +40,12 @@ import SaveIcon from '@mui/icons-material/Save';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloseIcon from '@mui/icons-material/Close';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'; // Added for cart button
+import TimerIcon from '@mui/icons-material/Timer';
 
 // Import the export/import utility functions
 import { exportFitAdjustmentsToFile, importFitAdjustmentsFromFile } from './fit-export-utility';
+import { useCart } from '../../context/CartContext';
 
 const ARTryOn = () => {
   const webcamRef = useRef(null);
@@ -63,6 +66,14 @@ const ARTryOn = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const productsPerPage = 12; // Adjust as needed
+  
+  // AR usage tracking
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [tryOnDuration, setTryOnDuration] = useState(0);
+  const [timerInterval, setTimerInterval] = useState(null);
+
+  // Cart context
+  const { addToCart } = useCart();
 
   // Default fit adjustment values
   const defaultFitAdjustments = {
@@ -85,6 +96,130 @@ const ARTryOn = () => {
 
   // State to track if current adjustments are unsaved
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Function to record AR usage
+  const recordARUsage = async (productId, duration, convertedToPurchase) => {
+    try {
+      const response = await fetch('http://localhost:5001/api/ar/try-on', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // If you have authentication, include the token here
+          'x-auth-token': localStorage.getItem('token')
+        },
+        body: JSON.stringify({
+          productId,
+          duration,
+          convertedToPurchase
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to record AR usage: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('AR usage recorded:', data);
+      return data;
+    } catch (error) {
+      console.error('Error recording AR usage:', error);
+      setSnackbar({
+        open: true,
+        message: `Error recording usage data: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Start tracking AR usage time when camera is enabled
+  useEffect(() => {
+    if (cameraEnabled && selectedItem) {
+      // Start the session timer
+      setSessionStartTime(Date.now());
+      
+      // Set up a timer to update the duration display
+      const interval = setInterval(() => {
+        if (sessionStartTime) {
+          const currentDuration = Math.floor((Date.now() - sessionStartTime) / 1000);
+          setTryOnDuration(currentDuration);
+        }
+      }, 1000);
+      
+      setTimerInterval(interval);
+      
+      return () => {
+        clearInterval(interval);
+      };
+    } else {
+      // Clear the timer when camera is disabled
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        setTimerInterval(null);
+      }
+      
+      // If there was an active session, record it
+      if (sessionStartTime && selectedItem) {
+        const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
+        recordARUsage(selectedItem._id, duration, false);
+        setSessionStartTime(null);
+        setTryOnDuration(0);
+      }
+    }
+  }, [cameraEnabled, selectedItem]);
+
+  // Cleanup the timer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+      
+      // Record final usage if there's an active session
+      if (sessionStartTime && selectedItem) {
+        const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
+        recordARUsage(selectedItem._id, duration, false);
+      }
+    };
+  }, []);
+
+  // Add to cart with AR tracking
+  const handleAddToCart = () => {
+    if (!selectedItem) return;
+    
+    // Format the item for cart
+    const cartItem = {
+      id: selectedItem._id,
+      name: selectedItem.name,
+      price: selectedItem.price,
+      quantity: 1,
+      size: selectedItem.sizes && selectedItem.sizes.length > 0 
+        ? (typeof selectedItem.sizes[0] === 'object' ? selectedItem.sizes[0].size : selectedItem.sizes[0]) 
+        : 'M',
+      image: selectedItem.images && selectedItem.images.length > 0
+        ? selectedItem.images.find(img => img.isMain)?.url || selectedItem.images[0].url
+        : '/api/placeholder/100/100'
+    };
+    
+    // Add to cart
+    addToCart(cartItem);
+    
+    // Record AR usage with conversion
+    if (sessionStartTime) {
+      const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
+      recordARUsage(selectedItem._id, duration, true);
+      
+      // Reset timer for new session
+      setSessionStartTime(Date.now());
+      setTryOnDuration(0);
+    }
+    
+    // Show success message
+    setSnackbar({
+      open: true,
+      message: `Added ${selectedItem.name} to your cart!`,
+      severity: 'success'
+    });
+  };
 
   // Load saved adjustments from localStorage on initial load
   useEffect(() => {
@@ -390,23 +525,6 @@ const ARTryOn = () => {
     } else {
       console.log("Image not yet loaded:", imageData.url);
     }
-  };
-
-  // Helper to get body part mask for better fitting
-  const getBodyPartMask = (segmentation, partIds) => {
-    if (!segmentation || !segmentation.data) return null;
-
-    const { width, height } = segmentation;
-    const mask = new Uint8ClampedArray(width * height);
-
-    for (let i = 0; i < segmentation.data.length; i++) {
-      const partId = segmentation.data[i];
-      if (partIds.includes(partId)) {
-        mask[i] = 255; // Set to white (visible)
-      }
-    }
-
-    return { data: mask, width, height };
   };
 
   // Draw a torso item (shirt, jacket, etc.) with improved fitting
@@ -716,7 +834,22 @@ const ARTryOn = () => {
     ctx.restore();
   };
 
-  // ======= PERMANENT STORAGE FUNCTIONS =======
+  // Helper function to get body part mask for better fitting
+  const getBodyPartMask = (segmentation, partIds) => {
+    if (!segmentation || !segmentation.data) return null;
+
+    const { width, height } = segmentation;
+    const mask = new Uint8ClampedArray(width * height);
+
+    for (let i = 0; i < segmentation.data.length; i++) {
+      const partId = segmentation.data[i];
+      if (partIds.includes(partId)) {
+        mask[i] = 255; // Set to white (visible)
+      }
+    }
+
+    return { data: mask, width, height };
+  };
 
   // Save current adjustments for the selected item
   const saveCurrentAdjustments = () => {
@@ -1037,6 +1170,19 @@ const ARTryOn = () => {
       });
       setHasUnsavedChanges(false);
     }
+    
+    // Start a new AR session timer if camera is enabled
+    if (cameraEnabled) {
+      // If there was an active session, record it first
+      if (sessionStartTime) {
+        const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
+        recordARUsage(selectedItem?._id, duration, false);
+      }
+      
+      // Start new session
+      setSessionStartTime(Date.now());
+      setTryOnDuration(0);
+    }
   };
 
   const handleCategoryChange = (event) => {
@@ -1047,26 +1193,6 @@ const ARTryOn = () => {
     setFitAdjustments({
       ...fitAdjustments,
       showControls: !fitAdjustments.showControls
-    });
-  };
-
-  const addToSubscription = () => {
-    if (!selectedItem) return;
-
-    setSnackbar({
-      open: true,
-      message: `Added ${selectedItem.name} to your next subscription box!`,
-      severity: 'success'
-    });
-  };
-
-  const buyNow = () => {
-    if (!selectedItem) return;
-
-    setSnackbar({
-      open: true,
-      message: `Purchased ${selectedItem.name} for ${selectedItem.price.toFixed(2)}!`,
-      severity: 'success'
     });
   };
 
@@ -1277,6 +1403,29 @@ const ARTryOn = () => {
               </Button>
             </Box>
           )}
+          
+          {/* Session timer indicator */}
+          {cameraEnabled && sessionStartTime && (
+            <Box 
+              sx={{ 
+                position: 'absolute', 
+                top: 10, 
+                left: 10, 
+                bgcolor: 'rgba(0, 0, 0, 0.5)', 
+                color: 'white',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <TimerIcon sx={{ fontSize: 16, mr: 0.5 }} />
+              <Typography variant="body2">
+                {Math.floor(tryOnDuration / 60)}:{(tryOnDuration % 60).toString().padStart(2, '0')}
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Camera toggle and fit controls */}
@@ -1289,14 +1438,27 @@ const ARTryOn = () => {
           </Button>
 
           {cameraEnabled && selectedItem && (
-            <Button
-              variant="outlined"
-              startIcon={<TuneIcon />}
-              onClick={toggleFitControls}
-              color="primary"
-            >
-              Adjust Fit
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<TuneIcon />}
+                onClick={toggleFitControls}
+                color="primary"
+              >
+                Adjust Fit
+              </Button>
+              
+              {/* Add to Cart Button */}
+              <Button 
+                variant="contained"
+                color="secondary"
+                startIcon={<AddShoppingCartIcon />}
+                onClick={handleAddToCart}
+                disabled={!selectedItem}
+              >
+                Add to Cart
+              </Button>
+            </>
           )}
 
           <Button
@@ -1623,8 +1785,9 @@ const ARTryOn = () => {
                     <Typography variant="subtitle2" noWrap>
                       {item.name}
                     </Typography>
+                    
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
-                      <Typography variant="body2" color="primary" fontWeight="bold">
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                         ${item.price.toFixed(2)}
                       </Typography>
                       <Chip size="small" label={item.category || 'Other'} />
@@ -1698,13 +1861,16 @@ const ARTryOn = () => {
               </CardContent>
             </Card>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - Now includes Add to Cart */}
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button variant="contained" color="primary" onClick={addToSubscription} fullWidth>
-                Add to Subscription Box
-              </Button>
-              <Button variant="outlined" onClick={buyNow} fullWidth>
-                Buy Now (${selectedItem.price.toFixed(2)})
+              <Button 
+                variant="contained" 
+                color="secondary"
+                startIcon={<AddShoppingCartIcon />}
+                onClick={handleAddToCart}
+                fullWidth
+              >
+                Add to Cart (${selectedItem.price.toFixed(2)})
               </Button>
             </Box>
           </>
@@ -1739,7 +1905,7 @@ const ARTryOn = () => {
               </li>
               <li>
                 <Typography variant="body2" color="text.secondary">
-                  Add items to your subscription box or purchase directly
+                  Click "Add to Cart" when you're ready to purchase
                 </Typography>
               </li>
             </ol>

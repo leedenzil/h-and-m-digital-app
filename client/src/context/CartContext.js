@@ -32,21 +32,34 @@ export const CartProvider = ({ children }) => {
 
   // Add item to cart
   const addToCart = (item) => {
+    // Create a properly formatted cart item that handles both _id and id
+    const formattedItem = {
+      id: item._id || item.id, // Handle both MongoDB _id and regular id
+      name: item.name,
+      price: parseFloat(item.price),
+      image: item.images && item.images.length > 0 
+        ? item.images.find(img => img.isMain)?.url || item.images[0].url
+        : item.image || '/placeholder.jpg',
+      size: item.size || (item.sizes && item.sizes.length > 0 ? 
+        (typeof item.sizes[0] === 'object' ? item.sizes[0].size : item.sizes[0]) : 'One Size'),
+      quantity: item.quantity || 1
+    };
+    
     setCart(prevCart => {
-      // Check if item already exists in cart
-      const existingItemIndex = prevCart.findIndex(cartItem => cartItem.id === item.id);
+      // Check if item already exists in cart using the normalized id
+      const existingItemIndex = prevCart.findIndex(cartItem => cartItem.id === formattedItem.id);
       
       if (existingItemIndex >= 0) {
         // Item exists, increase quantity
         const newCart = [...prevCart];
         newCart[existingItemIndex] = {
           ...newCart[existingItemIndex],
-          quantity: newCart[existingItemIndex].quantity + (item.quantity || 1)
+          quantity: newCart[existingItemIndex].quantity + formattedItem.quantity
         };
         return newCart;
       } else {
-        // Item doesn't exist, add new item with quantity
-        return [...prevCart, { ...item, quantity: item.quantity || 1 }];
+        // Item doesn't exist, add the formatted item
+        return [...prevCart, formattedItem];
       }
     });
   };

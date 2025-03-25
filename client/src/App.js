@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { 
   Box, 
@@ -148,35 +149,16 @@ const theme = createTheme({
 });
 
 // Create a Header component
+// Updated Header component with search, favorites, and notifications buttons removed
 const Header = () => {
   const { user, logout, isAuthenticated } = useContext(AuthContext);
   const { getCartSize } = useCart();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
-  };
-
-  const handleProfileMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleNotificationsMenuOpen = (event) => {
-    setNotificationsAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-    setNotificationsAnchorEl(null);
-  };
-  
-  const handleLogout = () => {
-    logout();
-    handleMenuClose();
   };
 
   const menuItems = [
@@ -215,7 +197,7 @@ const Header = () => {
               flexGrow: { xs: 1, md: 0 } 
             }}
           >
-            H&M Evolve
+            H&M Digital
           </Typography>
           
           {/* Main navigation - desktop */}
@@ -240,16 +222,6 @@ const Header = () => {
           
           {/* Right side icons */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <IconButton aria-label="search" sx={{ color: 'text.primary' }}>
-              <SearchIcon />
-            </IconButton>
-            
-            <IconButton aria-label="favorites" sx={{ color: 'text.primary' }}>
-              <Badge badgeContent={isAuthenticated() ? 5 : 0} color="primary">
-                <FavoriteIcon />
-              </Badge>
-            </IconButton>
-            
             <IconButton 
               aria-label="shopping cart" 
               sx={{ color: 'text.primary', mr: { xs: 0, md: 1 } }}
@@ -264,34 +236,23 @@ const Header = () => {
             {/* User profile - desktop */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
               {isAuthenticated() ? (
-                <>
-                  <IconButton
-                    edge="end"
-                    onClick={handleProfileMenuOpen}
-                    sx={{ ml: 1 }}
+                <IconButton
+                  edge="end"
+                  component="a"
+                  href="/profile"
+                  sx={{ ml: 1 }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      width: 32, 
+                      height: 32, 
+                      bgcolor: user?.profileImage ? 'transparent' : 'primary.main'
+                    }}
+                    src={user?.profileImage}
                   >
-                    <Avatar 
-                      sx={{ 
-                        width: 32, 
-                        height: 32, 
-                        bgcolor: user?.profileImage ? 'transparent' : 'primary.main'
-                      }}
-                      src={user?.profileImage}
-                    >
-                      {user?.firstName ? user.firstName.charAt(0) : <PersonIcon />}
-                    </Avatar>
-                  </IconButton>
-                  
-                  <IconButton
-                    color="inherit"
-                    onClick={handleNotificationsMenuOpen}
-                    sx={{ ml: 1 }}
-                  >
-                    <Badge badgeContent={7} color="primary">
-                      <NotificationsIcon />
-                    </Badge>
-                  </IconButton>
-                </>
+                    {user?.firstName ? user.firstName.charAt(0) : <PersonIcon />}
+                  </Avatar>
+                </IconButton>
               ) : (
                 <Button 
                   color="inherit" 

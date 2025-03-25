@@ -47,6 +47,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import FormatColorResetIcon from '@mui/icons-material/FormatColorReset';
 import { useCart } from '../../context/CartContext';
 import CartDrawer from '../common/CartDrawer';
+import { useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 
 
 const categories = [
@@ -92,6 +94,8 @@ export default function MarketplacePage() {
   const [tryOnOpen, setTryOnOpen] = useState(false);
   const [userRewardPoints, setUserRewardPoints] = useState(1500); // Mock user reward points
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const { isAuthenticated, user } = useContext(AuthContext);
+
 
   // Fetch products from API
   useEffect(() => {
@@ -266,6 +270,17 @@ export default function MarketplacePage() {
   const handleProductClick = (product) => {
     setSelectedProduct(product);
     setProductDetailOpen(true);
+    if (isAuthenticated()) {
+      const token = localStorage.getItem('token');
+      fetch('http://localhost:5001/api/marketplace/view', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ productId: product._id })
+      }).catch(error => console.error('Error recording product view:', error));
+    }
   };
 
   const handlePageChange = (event, value) => {

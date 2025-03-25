@@ -18,7 +18,6 @@ const productRoutes = require('./routes/productRoutes');
 const modelRoutes = require('./routes/modelRoutes');
 const arRoutes = require('./routes/arRoutes');
 
-
 // Load environment variables
 dotenv.config();
 
@@ -41,7 +40,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/products', marketplaceRoutes);
 app.use('/api/swipe', swipeRoutes);
 app.use('/api/models', modelRoutes);
-app.use('/api/ar', arRoutes);
+app.use('/api/ar', arRoutes); // FIXED: Changed from '/api/models' to '/api/ar'
 
 
 // MongoDB Connection
