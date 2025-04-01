@@ -33,7 +33,8 @@ npm install
 ### 3. Install Client Dependencies
 ```bash
 cd client
-npm install
+npm install --legacy-peer-deps
+
 ```
 
 ### 4. Install Server Dependencies
