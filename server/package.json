@@ -1,7 +1,7 @@
 {
   "name": "h-and-m-digital-server",
   "version": "1.0.0",
-  "description": "Backend server for H&M Digitalization App",
+  "description": "Backend server for H&M Evolveization App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

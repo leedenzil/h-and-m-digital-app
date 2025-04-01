@@ -24,6 +24,10 @@ const UserSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  onboardingCompleted: {
+    type: Boolean,
+    default: false
+  },
   profileImage: {
     type: String,
     default: ''

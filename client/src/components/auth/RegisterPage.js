@@ -136,7 +136,7 @@ const RegisterPage = () => {
               Create Account
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Join H&M Digital for personalized fashion
+              Join H&M Evolve for personalized fashion
             </Typography>
           </Box>
           

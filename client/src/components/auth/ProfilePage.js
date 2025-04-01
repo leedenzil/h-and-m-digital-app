@@ -1,4 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import {
   Box,
   Paper,
@@ -82,12 +84,12 @@ function OrderRow({ order, index }) {
           ${parseFloat(order.total).toFixed(2)}
         </TableCell>
         <TableCell>
-          <Chip 
-            label={order.status} 
+          <Chip
+            label={order.status}
             color={
-              order.status === 'Confirmed' || order.status === 'Delivered' ? 'success' : 
-              order.status === 'Shipped' ? 'info' : 
-              order.status === 'Processing' ? 'warning' : 'default'
+              order.status === 'Confirmed' || order.status === 'Delivered' ? 'success' :
+                order.status === 'Shipped' ? 'info' :
+                  order.status === 'Processing' ? 'warning' : 'default'
             }
             size="small"
           />
@@ -118,10 +120,10 @@ function OrderRow({ order, index }) {
                     <TableRow key={item.id}>
                       <TableCell component="th" scope="row">
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Avatar 
-                            alt={item.name} 
-                            src={item.image} 
-                            variant="square" 
+                          <Avatar
+                            alt={item.name}
+                            src={item.image}
+                            variant="square"
                             sx={{ width: 40, height: 40, mr: 1 }}
                           />
                           <Box>
@@ -163,15 +165,15 @@ function OrderRow({ order, index }) {
                   </TableRow>
                 </TableBody>
               </Table>
-              
+
               {/* Payment method and points used/earned */}
               <Box sx={{ mt: 2, bgcolor: '#f8f8f8', p: 2, borderRadius: 1 }}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <Typography variant="subtitle2">Payment Method:</Typography>
                     <Typography variant="body2">
-                      {order.useRewardPoints 
-                        ? 'Reward Points' 
+                      {order.useRewardPoints
+                        ? 'Reward Points'
                         : 'Credit Card'}
                     </Typography>
                   </Grid>
@@ -194,7 +196,7 @@ function OrderRow({ order, index }) {
                   </Grid>
                 </Grid>
               </Box>
-              
+
               {/* Add shipping address if available */}
               {order.shippingInfo && (
                 <Box sx={{ mt: 2 }}>
@@ -236,6 +238,52 @@ const ProfilePage = () => {
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
+  const navigate = useNavigate();
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+
+  const handleUpdateSubscriptionStatus = async (subscriptionId, newStatus) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
+      const response = await fetch(`http://localhost:5001/api/subscriptions/${subscriptionId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error updating subscription: ${response.status}`);
+      }
+      
+      // Update the subscription in the state
+      setSubscriptions(prev => prev.map(sub => 
+        sub._id === subscriptionId ? { ...sub, status: newStatus } : sub
+      ));
+      
+      setSnackbar({
+        open: true,
+        message: `Subscription ${newStatus === 'active' ? 'resumed' : 'paused'} successfully`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to update subscription: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState({
@@ -268,15 +316,20 @@ const ProfilePage = () => {
             throw new Error('Authentication token not found');
           }
 
+          console.log('Fetching user subscriptions...');
+
           const response = await fetch('http://localhost:5001/api/subscriptions/user', {
             headers: {
               'x-auth-token': token
             }
           });
 
+          console.log('Response status:', response.status);
+
           if (!response.ok) {
             if (response.status === 404) {
               // No active subscription found, which is normal
+              console.log('No active subscriptions found');
               setSubscriptions([]);
               return;
             }
@@ -287,7 +340,8 @@ const ProfilePage = () => {
           console.log('Subscription data:', data);
 
           // If data is an array, use it directly, otherwise wrap it in an array
-          setSubscriptions(Array.isArray(data) ? data : [data]);
+          const subscriptionData = Array.isArray(data) ? data : [data];
+          setSubscriptions(subscriptionData);
         } catch (error) {
           console.error('Error fetching subscriptions:', error);
           setError(`Failed to load subscription data: ${error.message}`);
@@ -314,22 +368,22 @@ const ProfilePage = () => {
           if (!token) {
             throw new Error('Authentication token not found');
           }
-          
+
           // Get purchases from the marketplace API
           const response = await fetch('http://localhost:5001/api/marketplace/purchases', {
             headers: {
               'x-auth-token': token
             }
           });
-          
+
           if (!response.ok) {
             throw new Error(`Error fetching order history: ${response.status}`);
           }
-          
+
           // The backend now returns already grouped orders by orderId
           const orders = await response.json();
           console.log('Order history data:', orders);
-          
+
           setOrders(orders);
         } catch (error) {
           console.error('Error with order history:', error);
@@ -340,10 +394,10 @@ const ProfilePage = () => {
         }
       }
     };
-    
+
     fetchOrderHistory();
   }, [activeTab]);
-  
+
 
   // Fetch delivery data from subscriptions
   useEffect(() => {
@@ -732,7 +786,7 @@ const ProfilePage = () => {
                               Next Delivery
                             </Typography>
                             <Typography variant="body1">
-                              {new Date(subscription.nextDeliveryDate).toLocaleDateString()}
+                              {subscription.nextDeliveryDate ? new Date(subscription.nextDeliveryDate).toLocaleDateString() : 'Not scheduled'}
                             </Typography>
                           </Grid>
                           <Grid item xs={6} sm={3}>
@@ -745,19 +799,73 @@ const ProfilePage = () => {
                           </Grid>
                         </Grid>
 
+                        {/* Display additional information */}
+                        <Box sx={{ mt: 2, bgcolor: '#f5f5f5', p: 2, borderRadius: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Subscription Details:
+                          </Typography>
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">
+                                Include Second Hand Items:
+                              </Typography>
+                              <Typography variant="body2">
+                                {subscription.includeSecondHand ? 'Yes' : 'No'}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">
+                                Festive Package:
+                              </Typography>
+                              <Typography variant="body2">
+                                {subscription.festivePackage === 'none' ? 'None' :
+                                  subscription.festivePackage === 'cny' ? 'Chinese New Year' :
+                                    subscription.festivePackage === 'christmas' ? 'Holiday Season' :
+                                      subscription.festivePackage === 'summer' ? 'Summer Special' : 'None'}
+                              </Typography>
+                            </Grid>
+                            {subscription.preferences && (
+                              <Grid item xs={12}>
+                                <Typography variant="body2" color="text.secondary">
+                                  Style Preferences:
+                                </Typography>
+                                <Typography variant="body2">
+                                  Exploration Level: {subscription.preferences.explorationLevel === 'no' ? 'Conservative' :
+                                    subscription.preferences.explorationLevel === 'moderate' ? 'Moderate' :
+                                      subscription.preferences.explorationLevel === 'yes' ? 'Adventurous' : 'Not specified'}
+                                </Typography>
+                                {subscription.preferences.sizes && (
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+                                    {subscription.preferences.sizes.top && (
+                                      <Chip size="small" label={`Top: ${subscription.preferences.sizes.top}`} />
+                                    )}
+                                    {subscription.preferences.sizes.bottom && (
+                                      <Chip size="small" label={`Bottom: ${subscription.preferences.sizes.bottom}`} />
+                                    )}
+                                    {subscription.preferences.sizes.shoe && (
+                                      <Chip size="small" label={`Shoe: ${subscription.preferences.sizes.shoe}`} />
+                                    )}
+                                  </Box>
+                                )}
+                              </Grid>
+                            )}
+                          </Grid>
+                        </Box>
+
                         <Divider sx={{ my: 2 }} />
 
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                           <Button
                             variant="outlined"
                             color="primary"
-                            href={`/subscription/details/${subscription._id}`}
+                            onClick={() => navigate(`/subscription/details/${subscription._id}`)}
                           >
                             View Details
                           </Button>
                           <Button
                             variant="contained"
                             color={subscription.status === 'active' ? 'warning' : 'primary'}
+                            onClick={() => handleUpdateSubscriptionStatus(subscription._id, subscription.status === 'active' ? 'paused' : 'active')}
                           >
                             {subscription.status === 'active' ? 'Pause Subscription' : 'Resume Subscription'}
                           </Button>
@@ -774,7 +882,7 @@ const ProfilePage = () => {
                   <Button
                     variant="contained"
                     color="primary"
-                    href="/subscription"
+                    onClick={() => navigate('/subscription')}
                     sx={{ mt: 2 }}
                   >
                     Start a Subscription

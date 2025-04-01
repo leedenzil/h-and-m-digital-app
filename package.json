@@ -1,7 +1,7 @@
 {
   "name": "h-and-m-digital-app",
   "version": "1.0.0",
-  "description": "H&M Digitalization App with subscription, marketplace, AR and analytics",
+  "description": "H&M Evolveization App with subscription, marketplace, AR and analytics",
   "main": "index.js",
   "scripts": {
     "client": "cd client && npm start",

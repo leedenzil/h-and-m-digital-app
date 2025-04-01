@@ -1,20 +1,20 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { 
-  Box, 
-  CssBaseline, 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  IconButton, 
-  Drawer, 
-  List, 
-  ListItem, 
-  ListItemButton, 
-  ListItemIcon, 
-  ListItemText, 
+import {
+  Box,
+  CssBaseline,
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  IconButton,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
   Badge,
   Avatar,
   Menu,
@@ -184,30 +184,30 @@ const Header = () => {
           >
             <MenuIcon />
           </IconButton>
-          
+
           {/* Logo */}
-          <Typography 
-            variant="h5" 
-            component="a" 
-            href="/" 
-            sx={{ 
-              fontWeight: 'bold', 
-              color: 'primary.main', 
-              textDecoration: 'none', 
-              flexGrow: { xs: 1, md: 0 } 
+          <Typography
+            variant="h5"
+            component="a"
+            href="/"
+            sx={{
+              fontWeight: 'bold',
+              color: 'primary.main',
+              textDecoration: 'none',
+              flexGrow: { xs: 1, md: 0 }
             }}
           >
-            H&M Digital
+            H&M Evolve
           </Typography>
-          
+
           {/* Main navigation - desktop */}
           <Box sx={{ display: { xs: 'none', md: 'flex' }, mx: 'auto' }}>
             {menuItems.map((item) => (
-              <Button 
-                key={item.text} 
-                href={item.path} 
-                sx={{ 
-                  mx: 1.5, 
+              <Button
+                key={item.text}
+                href={item.path}
+                sx={{
+                  mx: 1.5,
                   color: 'text.primary',
                   fontWeight: 'normal',
                   fontSize: '0.95rem'
@@ -219,11 +219,11 @@ const Header = () => {
               </Button>
             ))}
           </Box>
-          
+
           {/* Right side icons */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <IconButton 
-              aria-label="shopping cart" 
+            <IconButton
+              aria-label="shopping cart"
               sx={{ color: 'text.primary', mr: { xs: 0, md: 1 } }}
               component="a"
               href="/checkout"
@@ -232,7 +232,7 @@ const Header = () => {
                 <ShoppingCartIcon />
               </Badge>
             </IconButton>
-            
+
             {/* User profile - desktop */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
               {isAuthenticated() ? (
@@ -242,10 +242,10 @@ const Header = () => {
                   href="/profile"
                   sx={{ ml: 1 }}
                 >
-                  <Avatar 
-                    sx={{ 
-                      width: 32, 
-                      height: 32, 
+                  <Avatar
+                    sx={{
+                      width: 32,
+                      height: 32,
                       bgcolor: user?.profileImage ? 'transparent' : 'primary.main'
                     }}
                     src={user?.profileImage}
@@ -254,8 +254,8 @@ const Header = () => {
                   </Avatar>
                 </IconButton>
               ) : (
-                <Button 
-                  color="inherit" 
+                <Button
+                  color="inherit"
                   href="/login"
                   sx={{ ml: 1 }}
                 >
@@ -294,7 +294,7 @@ function AppContent() {
     setAnchorEl(null);
     setNotificationsAnchorEl(null);
   };
-  
+
   const handleLogout = () => {
     logout();
     handleMenuClose();
@@ -313,7 +313,7 @@ function AppContent() {
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
-          H&M Digital
+          H&M Evolve
         </Typography>
       </Toolbar>
       <Divider />
@@ -364,7 +364,7 @@ function AppContent() {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {/* Custom AppBar replaced with Header component */}
       <Header />
-      
+
       {/* Sidebar Drawer - Mobile only */}
       <Box
         component="nav"
@@ -385,7 +385,7 @@ function AppContent() {
           {drawer}
         </Drawer>
       </Box>
-      
+
       {/* Main Content */}
       <Box
         component="main"
@@ -393,50 +393,51 @@ function AppContent() {
       >
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route 
-            path="/subscription" 
+          <Route
+            path="/subscription"
             element={
               <ProtectedRoute>
                 <SubscriptionPage />
               </ProtectedRoute>
-            } 
+            }
           />
           <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/discover" element={<SwipeFeature />} />
           <Route path="/try-on" element={<ARTryOn />} />
           <Route path="/checkout" element={<CheckoutPage />} />
-          <Route 
-            path="/analytics" 
+          <Route
+            path="/analytics"
             element={
               <ProtectedRoute>
                 <AnalyticsTool />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/products" 
+          <Route
+            path="/admin/products"
             element={
               <ProtectedRoute>
                 <ProductManagement />
               </ProtectedRoute>
-            } 
+            }
           />
+          
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route 
-            path="/profile" 
+          <Route
+            path="/profile"
             element={
               <ProtectedRoute>
                 <ProfilePage />
               </ProtectedRoute>
-            } 
+            }
           />
-          
+
           {/* Fallback route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Box>
-      
+
       {/* Profile Menu */}
       <Menu
         anchorEl={anchorEl}
@@ -463,7 +464,7 @@ function AppContent() {
           Logout
         </MenuItem>
       </Menu>
-      
+
       {/* Notifications Menu */}
       <Menu
         anchorEl={notificationsAnchorEl}
@@ -491,7 +492,7 @@ function AppContent() {
 // Import missing icons
 const LockIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
-    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
   </svg>
 );
 

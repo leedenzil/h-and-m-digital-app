@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -43,8 +43,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import ReplayIcon from '@mui/icons-material/Replay';
 import StarIcon from '@mui/icons-material/Star';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'; // Use this instead of AddToCartIcon
-
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt';
 import TuneIcon from '@mui/icons-material/Tune';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -58,7 +57,6 @@ import RemoveIcon from '@mui/icons-material/Remove';
 import { useCart } from '../../context/CartContext';
 import CartDrawer from '../common/CartDrawer';
 
-
 // Component for swipeable card
 const SwipeCard = ({ product, onSwipe, isActive }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -68,7 +66,6 @@ const SwipeCard = ({ product, onSwipe, isActive }) => {
   const [direction, setDirection] = useState(null);
   const cardRef = useRef(null);
   const theme = useTheme();
-  
 
   // Reset position when a new card becomes active
   useEffect(() => {
@@ -395,7 +392,7 @@ const SwipeCard = ({ product, onSwipe, isActive }) => {
 
 export default function SwipeFeature() {
   const navigate = useNavigate();
-  // Use the cart context with available methods
+  const location = useLocation();
   const { cart, addToCart, removeFromCart, clearCart, getCartTotal, updateQuantity } = useCart();
   const [products, setProducts] = useState([]);
   const [likedProducts, setLikedProducts] = useState([]);
@@ -412,6 +409,10 @@ export default function SwipeFeature() {
   const [canRewind, setCanRewind] = useState(false);
   const [remainingRewinds, setRemainingRewinds] = useState(3); // Limited rewinds for free users
   const [cartOpen, setCartOpen] = useState(false);
+  // Added onboarding state variables
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [swipesNeeded, setSwipesNeeded] = useState(15);
+  const [swipesDone, setSwipesDone] = useState(0);
   const theme = useTheme();
 
   // Filter states
@@ -433,6 +434,142 @@ export default function SwipeFeature() {
   const currentProduct = filteredProducts.length > 0 && currentIndex < filteredProducts.length
     ? filteredProducts[currentIndex]
     : null;
+
+  // Check if user has enough swipe data and determine if onboarding is needed
+  useEffect(() => {
+    const checkSwipeHistory = async () => {
+      // Load values from localStorage first
+      const savedOnboardingState = localStorage.getItem('onboardingActive');
+      const savedSwipesDone = parseInt(localStorage.getItem('onboardingSwipesDone') || '0');
+      const savedSwipesNeeded = parseInt(localStorage.getItem('onboardingSwipesNeeded') || '15');
+      
+      // Initialize state with localStorage values to prevent resets on refresh
+      setSwipesDone(savedSwipesDone);
+      setSwipesNeeded(savedSwipesNeeded);
+      
+      // First check if user was directed from subscription page or if we're continuing onboarding
+      if ((location.state?.fromOnboarding) || savedOnboardingState === 'true') {
+        // Store that we're in onboarding mode
+        localStorage.setItem('onboardingActive', 'true');
+        
+        // Store swipesNeeded if provided from location state
+        if (location.state?.swipesNeeded) {
+          const newSwipesNeeded = location.state.swipesNeeded;
+          setSwipesNeeded(newSwipesNeeded);
+          localStorage.setItem('onboardingSwipesNeeded', newSwipesNeeded.toString());
+        } else {
+          // Use default or previously saved value
+          localStorage.setItem('onboardingSwipesNeeded', savedSwipesNeeded.toString());
+        }
+        
+        try {
+          // Get token from localStorage
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.log('User not authenticated, using local storage swipe count');
+            setIsOnboarding(true);
+            return;
+          }
+  
+          // Fetch user's swipe history count from database
+          const response = await fetch('http://localhost:5001/api/swipe/history/count', {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+  
+          if (!response.ok) {
+            throw new Error(`Error fetching swipe history: ${response.status}`);
+          }
+  
+          const data = await response.json();
+          const swipeCount = data.count || 0;
+          
+          console.log(`User has ${swipeCount} swipes in history`);
+          
+          // If database count is higher than localStorage count, use database count
+          const finalSwipeCount = Math.max(swipeCount, savedSwipesDone);
+          
+          // If user doesn't have enough swipes, show onboarding
+          if (finalSwipeCount < savedSwipesNeeded) {
+            setIsOnboarding(true);
+            // Update both state and localStorage
+            setSwipesDone(finalSwipeCount);
+            localStorage.setItem('onboardingSwipesDone', finalSwipeCount.toString());
+            
+            // Show notification about continuing onboarding
+            setSnackbar({
+              open: true,
+              message: `You need ${savedSwipesNeeded - finalSwipeCount} more swipes to complete your style profile.`,
+              severity: 'info'
+            });
+          } else {
+            // User already has enough swipe data
+            // Clear all onboarding data
+            localStorage.removeItem('onboardingActive');
+            localStorage.removeItem('onboardingSwipesDone');
+            localStorage.removeItem('onboardingSwipesNeeded');
+            
+            setSnackbar({
+              open: true,
+              message: 'You already have a style profile! Continue exploring or return to subscriptions.',
+              severity: 'success'
+            });
+            
+            // Ask if they want to return to subscription page
+            setTimeout(() => {
+              if (window.confirm('Your style profile is complete. Would you like to return to the subscription page?')) {
+                navigate('/subscription');
+              }
+            }, 1500);
+          }
+        } catch (error) {
+          console.error('Error checking swipe history:', error);
+          // If there's an error, use localStorage values
+          setIsOnboarding(true);
+        }
+      }
+    };
+    
+    checkSwipeHistory();
+  }, [location.state, navigate]);
+
+  // Add a useEffect for handling potential onboarding completion
+  useEffect(() => {
+    // Check if onboarding is active and user has completed required swipes
+    if (isOnboarding && swipesDone >= swipesNeeded) {
+      // Also update the database to mark onboarding as complete
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch('http://localhost:5001/api/users/complete-onboarding', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': token
+          }
+        }).catch(err => console.error('Failed to mark onboarding as complete:', err));
+      }
+      setSnackbar({
+        open: true,
+        message: 'Style profile complete! You can now create a subscription with personalized recommendations.',
+        severity: 'success'
+      });
+      
+      // Update onboarding status and clear localStorage if done
+      setIsOnboarding(false);
+      // Clear all onboarding localStorage data
+      localStorage.removeItem('onboardingActive');
+      localStorage.removeItem('onboardingSwipesDone');
+      localStorage.removeItem('onboardingSwipesNeeded');
+      
+      // Offer to return to subscription page
+      setTimeout(() => {
+        if (window.confirm('Style profile complete! Would you like to return to the subscription page?')) {
+          navigate('/subscription');
+        }
+      }, 1500);
+    }
+  }, [swipesDone, swipesNeeded, isOnboarding, navigate]);
 
   // Fetch products from API when component mounts
   useEffect(() => {
@@ -582,19 +719,32 @@ export default function SwipeFeature() {
     if (filteredProducts.length === 0 || currentIndex >= filteredProducts.length) {
       return;
     }
-  
+    
     const swiped = filteredProducts[currentIndex];
-  
+    
     // Save the swiped product and direction for potential rewind
     setLastSwipedProduct(swiped);
     setLastSwipeDirection(direction);
     setCanRewind(true);
   
+    // Update onboarding progress if in onboarding mode
+    if (isOnboarding) {
+      const newSwipeCount = swipesDone + 1;
+      setSwipesDone(newSwipeCount);
+      // Store the updated count in localStorage
+      localStorage.setItem('onboardingSwipesDone', newSwipeCount.toString());
+      
+      // Check if onboarding is complete
+      if (newSwipeCount >= swipesNeeded) {
+        // Will be handled by the completion useEffect
+      }
+    }
+    
     // Determine if it's a like based on direction
     const liked = direction === 'right' || direction === 'up';
-  
+    
     // Make actual API call to record the swipe
-    fetch('/api/swipe/record', {
+    fetch('http://localhost:5001/api/swipe/record', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -602,7 +752,8 @@ export default function SwipeFeature() {
       },
       body: JSON.stringify({
         productId: swiped._id,
-        liked: liked
+        liked: liked,
+        isOnboarding: isOnboarding
       })
     })
     .then(response => {
@@ -616,24 +767,26 @@ export default function SwipeFeature() {
     })
     .catch(error => {
       console.error('Error recording swipe:', error);
+      // Even if API call fails, we still want to keep local count
     });
-  
+    
+    // Rest of your existing handleSwipe code...
     if (direction === 'right') {
       // User liked the product
       setLikedProducts(prev => [...prev, swiped]);
-  
+    
       // Show success message
       setSnackbar({
         open: true,
         message: `Added ${swiped.name} to your favorites!`,
         severity: 'success'
       });
-  
+    
       console.log('Liked:', swiped);
     } else if (direction === 'left') {
       // Record dislike
       console.log('Disliked:', swiped);
-  
+    
       // Optional feedback
       setSnackbar({
         open: true,
@@ -643,16 +796,16 @@ export default function SwipeFeature() {
     } else if (direction === 'up') {
       // Super like
       setLikedProducts(prev => [...prev, swiped]);
-  
+    
       console.log('Super Liked:', swiped);
-  
+    
       setSnackbar({
         open: true,
         message: `Super liked ${swiped.name}!`,
         severity: 'success'
       });
     }
-  
+    
     // Move to the next product
     if (currentIndex < filteredProducts.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -664,14 +817,14 @@ export default function SwipeFeature() {
         // For demo purposes, we'll just shuffle the existing ones
         const shuffled = [...products].sort(() => 0.5 - Math.random());
         setProducts(shuffled);
-  
+    
         // Reapply filters
         let filtered = [...shuffled];
         if (filterOptions.category !== 'All Categories') {
           filtered = filtered.filter(p => p.category === filterOptions.category);
         }
         // Apply other filters similarly...
-  
+    
         setFilteredProducts(filtered);
         setCurrentIndex(0);
         setLoading(false);
@@ -790,7 +943,6 @@ export default function SwipeFeature() {
     });
   };
 
-  // FIXED: Updated handleAddToCart to properly format product before adding to cart
   const handleAddToCart = (product) => {
     // Ensure the product has the correct format for the cart
     const cartItem = {
@@ -802,8 +954,6 @@ export default function SwipeFeature() {
         : product.image || '/api/placeholder/500/700',
       quantity: 1
     };
-
-    
 
     addToCart(cartItem);
 
@@ -825,7 +975,6 @@ export default function SwipeFeature() {
     }
   };
 
-  // FIXED: Updated handleRemoveFromCart to use context's removeFromCart function
   const handleRemoveFromCart = (productId) => {
     removeFromCart(productId);
 
@@ -839,7 +988,6 @@ export default function SwipeFeature() {
   const handleGoToCheckout = () => {
     navigate('/checkout');
   };
-
 
   if (loading) {
     return (
@@ -940,6 +1088,51 @@ export default function SwipeFeature() {
           <Tab label="Favorites" />
         </Tabs>
       </Box>
+
+      {/* Onboarding progress bar */}
+      {isOnboarding && (
+        <Box 
+          sx={{ 
+            position: 'sticky', 
+            top: 0, 
+            zIndex: 10, 
+            bgcolor: 'primary.main', 
+            color: 'white',
+            py: 1,
+            px: 2,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <Typography variant="body1">
+            Onboarding: Swipe to establish your style preferences
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ 
+              width: 200, 
+              bgcolor: 'rgba(255,255,255,0.2)', 
+              borderRadius: 5,
+              mx: 2,
+              position: 'relative',
+              height: 10
+            }}>
+              <Box sx={{ 
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                height: '100%',
+                width: `${(swipesDone / swipesNeeded) * 100}%`,
+                bgcolor: 'white',
+                borderRadius: 5
+              }} />
+            </Box>
+            <Typography variant="body2">
+              {swipesDone}/{swipesNeeded}
+            </Typography>
+          </Box>
+        </Box>
+      )}
 
       {/* Content based on active tab */}
       <Box sx={{ flex: 1, overflow: 'hidden' }}>
@@ -1110,7 +1303,6 @@ export default function SwipeFeature() {
         )}
 
         {/* Liked Items Tab */}
-        {/* Tab 1: Liked Items tab */}
         {activeTab === 1 && (
           <Box sx={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
             {likedProducts.length === 0 ? (
@@ -1200,7 +1392,6 @@ export default function SwipeFeature() {
             )}
           </Box>
         )}
-
       </Box>
 
       {/* Product Detail Dialog */}

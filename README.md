@@ -1,7 +1,7 @@
 # H&M Evolve
 
 ## Overview
-H&M Digital is a comprehensive fashion platform featuring subscription services, AR try-on, second-hand marketplace, and personalized recommendations.
+H&M Evolve is a comprehensive fashion platform featuring subscription services, AR try-on, second-hand marketplace, and personalized recommendations.
 
 ## Prerequisites
 - Node.js (v18 or later)

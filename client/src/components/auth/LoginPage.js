@@ -110,7 +110,7 @@ const LoginPage = () => {
               Welcome Back
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Sign in to your H&M Digital account
+              Sign in to your H&M Evolve account
             </Typography>
           </Box>
           

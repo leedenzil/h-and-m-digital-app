@@ -196,16 +196,22 @@ router.get('/festive', (req, res) => {
 // Get user's active subscription
 router.get('/user', auth, async (req, res) => {
   try {
-    const subscription = await Subscription.findOne({ 
+    console.log(`Getting subscriptions for user: ${req.user.id}`);
+    
+    // Find all active subscriptions for the user, not just one
+    const subscriptions = await Subscription.find({ 
       user: req.user.id,
-      status: 'active'
+      status: { $in: ['active', 'paused'] } // Include both active and paused
     }).populate('deliveryHistory.items.product');
     
-    if (!subscription) {
-      return res.status(404).json({ message: 'No active subscription found' });
+    console.log(`Found ${subscriptions.length} subscriptions`);
+    
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log('No subscriptions found for user');
+      return res.status(404).json({ message: 'No subscriptions found' });
     }
     
-    res.json(subscription);
+    res.json(subscriptions);
   } catch (error) {
     console.error('Error fetching subscription:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -213,6 +219,7 @@ router.get('/user', auth, async (req, res) => {
 });
 
 // Create a new subscription
+// Create a new subscription - updated to handle new data structure
 router.post('/', auth, async (req, res) => {
   const { 
     plan, 
@@ -222,6 +229,8 @@ router.post('/', auth, async (req, res) => {
     festivePackage,
     preferences
   } = req.body;
+  
+  console.log('Creating new subscription with data:', req.body);
   
   try {
     // Calculate price based on selections
@@ -250,13 +259,18 @@ router.post('/', auth, async (req, res) => {
     };
     
     const basePrice = packages[packageType] * tiers[tier] * planMultipliers[plan];
-    const festiveAddon = festiveAddons[festivePackage];
+    const festiveAddon = festiveAddons[festivePackage || 'none'];
     const discount = includeSecondHand ? basePrice * 0.1 : 0; // 10% discount if including second hand
     
     const totalPrice = basePrice + festiveAddon - discount;
     
     // Calculate next delivery date
-    const nextDeliveryDate = Subscription.calculateNextDeliveryDate(plan);
+    const nextDeliveryDate = new Date();
+    if (plan === 'monthly') {
+      nextDeliveryDate.setMonth(nextDeliveryDate.getMonth() + 1);
+    } else {
+      nextDeliveryDate.setMonth(nextDeliveryDate.getMonth() + 3);
+    }
     
     // Create new subscription
     const newSubscription = new Subscription({
@@ -264,8 +278,8 @@ router.post('/', auth, async (req, res) => {
       plan,
       packageType,
       tier,
-      includeSecondHand,
-      festivePackage,
+      includeSecondHand: includeSecondHand || false,
+      festivePackage: festivePackage || 'none',
       nextDeliveryDate,
       price: {
         base: basePrice,
@@ -273,10 +287,15 @@ router.post('/', auth, async (req, res) => {
         discount,
         total: totalPrice
       },
-      preferences
+      preferences: preferences || {},
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
     
+    console.log('Created subscription object:', newSubscription);
     await newSubscription.save();
+    console.log('Subscription saved successfully with ID:', newSubscription._id);
     
     // Update user's isSubscribed status
     await User.findByIdAndUpdate(req.user.id, { isSubscribed: true });

@@ -1,3 +1,5 @@
+// Update your Subscription.js model to better handle the new data structure
+
 const mongoose = require('mongoose');
 
 const SubscriptionSchema = new mongoose.Schema({
@@ -58,14 +60,16 @@ const SubscriptionSchema = new mongoose.Schema({
     }
   },
   preferences: {
-    colors: [String],
-    styles: [String],
+    explorationLevel: {
+      type: String,
+      enum: ['no', 'moderate', 'yes'],
+      default: 'moderate'
+    },
     sizes: {
       top: String,
       bottom: String,
       shoe: String
     },
-    excludedItems: [String],
     notes: String
   },
   deliveryHistory: [{
@@ -129,6 +133,29 @@ SubscriptionSchema.statics.calculateNextDeliveryDate = function(plan, currentDat
 // Method to calculate total price
 SubscriptionSchema.methods.calculateTotalPrice = function() {
   return this.price.base + this.price.festiveAddon - this.price.discount;
+};
+
+// Method to check if subscription is active
+SubscriptionSchema.methods.isActive = function() {
+  return this.status === 'active';
+};
+
+// Method to pause subscription
+SubscriptionSchema.methods.pause = function() {
+  this.status = 'paused';
+  return this.save();
+};
+
+// Method to resume subscription
+SubscriptionSchema.methods.resume = function() {
+  this.status = 'active';
+  return this.save();
+};
+
+// Method to cancel subscription
+SubscriptionSchema.methods.cancel = function() {
+  this.status = 'cancelled';
+  return this.save();
 };
 
 const Subscription = mongoose.model('Subscription', SubscriptionSchema);

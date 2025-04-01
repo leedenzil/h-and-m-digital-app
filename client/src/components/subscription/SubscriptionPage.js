@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Box, 
+  Box,
   Typography,
   Card,
   CardContent,
@@ -23,14 +24,18 @@ import {
   Select,
   MenuItem,
   InputLabel,
-  Checkbox,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
   CircularProgress,
   Alert,
-  Snackbar
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
@@ -38,6 +43,11 @@ import EventIcon from '@mui/icons-material/Event';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import CelebrationIcon from '@mui/icons-material/Celebration';
+import ExploreIcon from '@mui/icons-material/Explore';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import SwipeIcon from '@mui/icons-material/Swipe';
+import EditIcon from '@mui/icons-material/Edit';
+import { AuthContext } from '../../context/AuthContext';
 
 // Subscription plan options
 const planTypes = [
@@ -135,31 +145,65 @@ const festiveOptions = [
   }
 ];
 
-// Available colors for preferences
-const availableColors = ['Black', 'White', 'Blue', 'Red', 'Green', 'Yellow', 'Pink', 'Purple', 'Brown', 'Grey'];
+// Willingness to explore options
+const explorationOptions = [
+  {
+    id: "no",
+    title: "Stick to my preferences",
+    description: "I want items that match my style preferences closely",
+    icon: <CheckIcon />,
+    details: "We'll recommend items that closely align with your established preferences based on your swipe history and previous purchases."
+  },
+  {
+    id: "moderate",
+    title: "Some variety",
+    description: "I'm open to some new styles while mostly sticking to my preferences",
+    icon: <AutorenewIcon />,
+    details: "We'll recommend a mix of items that match your preferences and some new styles that our stylists think you might like to try."
+  },
+  {
+    id: "yes",
+    title: "Surprise me",
+    description: "I'm open to exploring new styles and trends",
+    icon: <ExploreIcon />,
+    details: "We'll recommend a diverse range of styles including trends and items outside your typical preferences to help you discover new looks."
+  }
+];
 
-// Available styles for preferences
-const availableStyles = ['Casual', 'Formal', 'Business', 'Sporty', 'Vintage', 'Minimalist', 'Bohemian', 'Street'];
+// Size options
+const sizeOptions = {
+  top: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+  bottom: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+  shoe: ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45']
+};
 
 export default function SubscriptionPage() {
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useContext(AuthContext);
   const [activeStep, setActiveStep] = useState(0);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [selectedTier, setSelectedTier] = useState(null);
   const [selectedFestive, setSelectedFestive] = useState(festiveOptions[0]);
   const [includeSecondHand, setIncludeSecondHand] = useState(false);
-  const [preferences, setPreferences] = useState({
-    colors: [],
-    styles: [],
-    sizes: {
-      top: '',
-      bottom: '',
-      shoe: ''
-    },
-    excludedItems: [],
-    notes: ''
-  });
   
+  // Replace detailed preferences with willingness to explore
+  const [explorationLevel, setExplorationLevel] = useState(null);
+  
+  // Basic sizing info is still needed
+  const [sizes, setSizes] = useState({
+    top: '',
+    bottom: '',
+    shoe: ''
+  });
+
+  // Onboarding state
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [onboardingOption, setOnboardingOption] = useState(null);
+  const [swipesNeeded, setSwipesNeeded] = useState(15); // Minimum swipes required
+
   // Added states for form validation and API integration
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -171,21 +215,33 @@ export default function SubscriptionPage() {
     severity: 'success'
   });
 
-  const steps = ['Select Plan', 'Customize Package', 'Style Preferences', 'Review & Confirm'];
+  const steps = ['Select Plan', 'Customize Package', 'Exploration Level', 'Review & Confirm'];
 
-  // Check if user is authenticated
+  // Check if user is authenticated and if they are new
   useEffect(() => {
-    // Simplified authentication check for the prototype
-    const isAuthenticated = true; // Mock authentication
-    
-    if (!isAuthenticated) {
-      setSnackbar({
-        open: true,
-        message: 'Please log in to create a subscription',
-        severity: 'warning'
-      });
-    }
-  }, []);
+    const checkUserStatus = async () => {
+      if (isAuthenticated && user) {
+        // Check if user has preference data
+        // This is a simplified check - in a real app, you'd check for preference data in the backend
+        const hasPreferenceData = user.swipedItems && user.swipedItems.length > 10;
+        setIsNewUser(!hasPreferenceData);
+        
+        // If new user, show onboarding dialog
+        if (!hasPreferenceData && !onboardingComplete) {
+          setShowOnboarding(true);
+        }
+      } else {
+        // Not authenticated
+        setSnackbar({
+          open: true,
+          message: 'Please log in to create a subscription',
+          severity: 'warning'
+        });
+      }
+    };
+
+    checkUserStatus();
+  }, [isAuthenticated, user, onboardingComplete]);
 
   const handleNext = () => {
     // Validate current step before proceeding
@@ -207,16 +263,11 @@ export default function SubscriptionPage() {
     setSelectedTier(null);
     setSelectedFestive(festiveOptions[0]);
     setIncludeSecondHand(false);
-    setPreferences({
-      colors: [],
-      styles: [],
-      sizes: {
-        top: '',
-        bottom: '',
-        shoe: ''
-      },
-      excludedItems: [],
-      notes: ''
+    setExplorationLevel(null);
+    setSizes({
+      top: '',
+      bottom: '',
+      shoe: ''
     });
     setErrors({});
     setSubmissionError(null);
@@ -225,20 +276,66 @@ export default function SubscriptionPage() {
 
   const calculateTotalPrice = () => {
     if (!selectedPlan || !selectedPackage || !selectedTier) return 0;
-    
+
     const basePrice = selectedPackage.basePrice;
     const tierMultiplier = selectedTier.priceMultiplier;
     const planMultiplier = selectedPlan.priceMultiplier;
     const festiveAddon = selectedFestive.priceAddon;
     const secondHandDiscount = includeSecondHand ? 0.9 : 1; // 10% discount if including second hand items
-    
+
     return ((basePrice * tierMultiplier * planMultiplier) + festiveAddon) * secondHandDiscount;
+  };
+
+  // State for showing the preference questionnaire
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [preferredColors, setPreferredColors] = useState([]);
+  const [preferredStyles, setPreferredStyles] = useState([]);
+  
+  // Available colors and styles for questionnaire
+  const availableColors = ['Black', 'White', 'Blue', 'Red', 'Green', 'Yellow', 'Pink', 'Purple', 'Brown', 'Grey'];
+  const availableStyles = ['Casual', 'Formal', 'Sporty', 'Vintage', 'Minimalist', 'Street', 'Bohemian', 'Preppy'];
+
+  // Handle onboarding option selection
+  const handleOnboardingOption = (option) => {
+    setOnboardingOption(option);
+    
+    if (option === 'form') {
+      // Show the questionnaire instead of just closing the dialog
+      setShowOnboarding(false);
+      setShowQuestionnaire(true);
+    } else if (option === 'swipe') {
+      // Redirect to swipe feature with swipesNeeded parameter
+      setShowOnboarding(false);
+      navigate('/discover', { state: { fromOnboarding: true, swipesNeeded } });
+    }
+  };
+  
+  // Handle completion of the questionnaire
+  const handleQuestionnaireComplete = () => {
+    // In a real implementation, this would save the preferences to the user profile
+    console.log('Saving preferences:', { preferredColors, preferredStyles, sizes });
+    setShowQuestionnaire(false);
+    setOnboardingComplete(true);
+    
+    setSnackbar({
+      open: true,
+      message: 'Your preferences have been saved!',
+      severity: 'success'
+    });
+  };
+
+  // Handle size change
+  const handleSizeChange = (type, value) => {
+    setSizes(prev => ({
+      ...prev,
+      [type]: value
+    }));
   };
 
   // Validate each step
   const validateCurrentStep = () => {
     const newErrors = {};
-    
+
     switch (activeStep) {
       case 0:
         if (!selectedPlan) {
@@ -254,26 +351,23 @@ export default function SubscriptionPage() {
         }
         break;
       case 2:
-        if (preferences.colors.length === 0) {
-          newErrors.colors = 'Please select at least one color preference';
+        if (!explorationLevel) {
+          newErrors.exploration = 'Please select how willing you are to explore';
         }
-        if (preferences.styles.length === 0) {
-          newErrors.styles = 'Please select at least one style preference';
-        }
-        if (!preferences.sizes.top) {
+        if (!sizes.top) {
           newErrors.topSize = 'Please select your top size';
         }
-        if (!preferences.sizes.bottom) {
+        if (!sizes.bottom) {
           newErrors.bottomSize = 'Please select your bottom size';
         }
-        if (!preferences.sizes.shoe) {
+        if (!sizes.shoe) {
           newErrors.shoeSize = 'Please select your shoe size';
         }
         break;
       default:
         break;
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -281,100 +375,72 @@ export default function SubscriptionPage() {
   // Submit the subscription
   const handleSubmit = async () => {
     if (!validateCurrentStep()) return;
-    
+
     setIsSubmitting(true);
     setSubmissionError(null);
-    
+
     try {
-      // In a real app, this would be an API call
-      setTimeout(() => {
-        setIsSubmitting(false);
-        setSubmissionSuccess(true);
-        setSnackbar({
-          open: true,
-          message: 'Subscription created successfully! Your first box will arrive soon.',
-          severity: 'success'
-        });
-      }, 2000);
-    } catch (error) {
-      setSubmissionError("An error occurred. Please try again.");
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Not authenticated. Please log in.');
+      }
+
+      // Prepare subscription data - ensuring compatibility with backend
+      const subscriptionData = {
+        plan: selectedPlan.id,
+        packageType: selectedPackage.id,
+        tier: selectedTier.id,
+        includeSecondHand: includeSecondHand,
+        festivePackage: selectedFestive.id,
+        preferences: {
+          // Include both new exploration level and traditional preference data
+          explorationLevel: explorationLevel.id,
+          sizes: sizes,
+          // Include color and style preferences if they were collected during onboarding
+          colors: preferredColors.length > 0 ? preferredColors : undefined,
+          styles: preferredStyles.length > 0 ? preferredStyles : undefined,
+          notes: `Exploration Level: ${explorationLevel?.title || 'Not specified'}`
+        }
+      };
+
+      console.log('Sending subscription data:', subscriptionData);
+
+      // Make the API call
+      const response = await fetch('http://localhost:5001/api/subscriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify(subscriptionData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create subscription');
+      }
+
+      const data = await response.json();
+      console.log('Subscription created:', data);
+
+      setIsSubmitting(false);
+      setSubmissionSuccess(true);
       setSnackbar({
         open: true,
-        message: "Failed to create subscription. Please try again.",
+        message: 'Subscription created successfully! Your first box will arrive soon.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      setSubmissionError(error.message || "An error occurred. Please try again.");
+      setSnackbar({
+        open: true,
+        message: error.message || "Failed to create subscription. Please try again.",
         severity: 'error'
       });
       setIsSubmitting(false);
     }
-  };
-
-  // Toggle color selection
-  const toggleColorSelection = (color) => {
-    setPreferences((prev) => {
-      if (prev.colors.includes(color)) {
-        return {
-          ...prev,
-          colors: prev.colors.filter(c => c !== color)
-        };
-      } else {
-        return {
-          ...prev,
-          colors: [...prev.colors, color]
-        };
-      }
-    });
-  };
-
-  // Toggle style selection
-  const toggleStyleSelection = (style) => {
-    setPreferences((prev) => {
-      if (prev.styles.includes(style)) {
-        return {
-          ...prev,
-          styles: prev.styles.filter(s => s !== style)
-        };
-      } else {
-        return {
-          ...prev,
-          styles: [...prev.styles, style]
-        };
-      }
-    });
-  };
-
-  // Update preferences size
-  const handleSizeChange = (type, value) => {
-    setPreferences({
-      ...preferences,
-      sizes: {
-        ...preferences.sizes,
-        [type]: value
-      }
-    });
-  };
-
-  // Toggle excluded item
-  const toggleExcludedItem = (item) => {
-    setPreferences((prev) => {
-      if (prev.excludedItems.includes(item)) {
-        return {
-          ...prev,
-          excludedItems: prev.excludedItems.filter(i => i !== item)
-        };
-      } else {
-        return {
-          ...prev,
-          excludedItems: [...prev.excludedItems, item]
-        };
-      }
-    });
-  };
-
-  // Update notes
-  const handleNotesChange = (event) => {
-    setPreferences({
-      ...preferences,
-      notes: event.target.value
-    });
   };
 
   // Handle snackbar close
@@ -394,17 +460,17 @@ export default function SubscriptionPage() {
         <Typography variant="body1" color="text.secondary" paragraph>
           Select how often you'd like to receive your fashion box
         </Typography>
-        
+
         {errors.plan && (
           <Alert severity="error" sx={{ mb: 2 }}>{errors.plan}</Alert>
         )}
-        
+
         <Grid container spacing={3}>
           {planTypes.map((plan) => (
             <Grid item xs={12} md={6} key={plan.id}>
-              <Card 
+              <Card
                 variant={selectedPlan === plan ? "outlined" : "elevation"}
-                sx={{ 
+                sx={{
                   cursor: 'pointer',
                   border: selectedPlan === plan ? '2px solid #1976d2' : '1px solid #e0e0e0',
                   height: '100%',
@@ -432,11 +498,11 @@ export default function SubscriptionPage() {
                 </CardContent>
                 <CardActions>
                   {selectedPlan === plan ? (
-                    <Chip 
-                      label="Selected" 
-                      color="primary" 
-                      icon={<CheckIcon />} 
-                      variant="filled" 
+                    <Chip
+                      label="Selected"
+                      color="primary"
+                      icon={<CheckIcon />}
+                      variant="filled"
                     />
                   ) : (
                     <Button size="small" color="primary">
@@ -458,14 +524,14 @@ export default function SubscriptionPage() {
         <Typography variant="h5" gutterBottom>
           Customize Your Package
         </Typography>
-        
+
         {(errors.package || errors.tier) && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {errors.package && <div>{errors.package}</div>}
             {errors.tier && <div>{errors.tier}</div>}
           </Alert>
         )}
-        
+
         <Grid container spacing={4}>
           <Grid item xs={12} md={8}>
             <Typography variant="h6" gutterBottom>
@@ -474,9 +540,9 @@ export default function SubscriptionPage() {
             <Grid container spacing={2}>
               {packageTypes.map((pkg) => (
                 <Grid item xs={12} md={4} key={pkg.id}>
-                  <Card 
+                  <Card
                     variant={selectedPackage === pkg ? "outlined" : "elevation"}
-                    sx={{ 
+                    sx={{
                       cursor: 'pointer',
                       border: selectedPackage === pkg ? '2px solid #1976d2' : '1px solid #e0e0e0',
                       height: '100%',
@@ -514,11 +580,11 @@ export default function SubscriptionPage() {
                         ${pkg.basePrice.toFixed(2)}
                       </Typography>
                       {selectedPackage === pkg && (
-                        <Chip 
-                          label="Selected" 
-                          color="primary" 
-                          size="small" 
-                          sx={{ ml: 'auto' }} 
+                        <Chip
+                          label="Selected"
+                          color="primary"
+                          size="small"
+                          sx={{ ml: 'auto' }}
                         />
                       )}
                     </CardActions>
@@ -533,9 +599,9 @@ export default function SubscriptionPage() {
             <Grid container spacing={2}>
               {tierOptions.map((tier) => (
                 <Grid item xs={12} md={4} key={tier.id}>
-                  <Card 
+                  <Card
                     variant={selectedTier === tier ? "outlined" : "elevation"}
-                    sx={{ 
+                    sx={{
                       cursor: 'pointer',
                       border: selectedTier === tier ? '2px solid #1976d2' : '1px solid #e0e0e0',
                       height: '100%',
@@ -559,16 +625,16 @@ export default function SubscriptionPage() {
                       </Typography>
                     </CardContent>
                     <CardActions>
-                      <Chip 
-                        label={tier.id === 'budget' ? 'Budget' : tier.id === 'mid' ? 'Standard' : 'Premium'} 
-                        color={tier.id === 'budget' ? 'default' : tier.id === 'mid' ? 'primary' : 'secondary'} 
+                      <Chip
+                        label={tier.id === 'budget' ? 'Budget' : tier.id === 'mid' ? 'Standard' : 'Premium'}
+                        color={tier.id === 'budget' ? 'default' : tier.id === 'mid' ? 'primary' : 'secondary'}
                       />
                       {selectedTier === tier && (
-                        <Chip 
-                          label="Selected" 
-                          color="primary" 
-                          size="small" 
-                          sx={{ ml: 'auto' }} 
+                        <Chip
+                          label="Selected"
+                          color="primary"
+                          size="small"
+                          sx={{ ml: 'auto' }}
                         />
                       )}
                     </CardActions>
@@ -583,9 +649,9 @@ export default function SubscriptionPage() {
             <Grid container spacing={2}>
               {festiveOptions.map((option) => (
                 <Grid item xs={12} md={3} key={option.id}>
-                  <Card 
+                  <Card
                     variant={selectedFestive === option ? "outlined" : "elevation"}
-                    sx={{ 
+                    sx={{
                       cursor: 'pointer',
                       border: selectedFestive === option ? '2px solid #1976d2' : '1px solid #e0e0e0',
                       height: '100%',
@@ -611,11 +677,11 @@ export default function SubscriptionPage() {
                           +${option.priceAddon.toFixed(2)}
                         </Typography>
                         {selectedFestive === option && (
-                          <Chip 
-                            label="Selected" 
-                            color="primary" 
-                            size="small" 
-                            sx={{ ml: 'auto' }} 
+                          <Chip
+                            label="Selected"
+                            color="primary"
+                            size="small"
+                            sx={{ ml: 'auto' }}
                           />
                         )}
                       </CardActions>
@@ -651,7 +717,7 @@ export default function SubscriptionPage() {
               <Typography variant="h6" gutterBottom>
                 Your Subscription Summary
               </Typography>
-              
+
               {selectedPlan && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary">
@@ -662,7 +728,7 @@ export default function SubscriptionPage() {
                   </Typography>
                 </Box>
               )}
-              
+
               {selectedPackage && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary">
@@ -673,7 +739,7 @@ export default function SubscriptionPage() {
                   </Typography>
                 </Box>
               )}
-              
+
               {selectedTier && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary">
@@ -684,7 +750,7 @@ export default function SubscriptionPage() {
                   </Typography>
                 </Box>
               )}
-              
+
               {selectedFestive && selectedFestive.id !== 'none' && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary">
@@ -695,7 +761,7 @@ export default function SubscriptionPage() {
                   </Typography>
                 </Box>
               )}
-              
+
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Second-hand Items:
@@ -704,9 +770,9 @@ export default function SubscriptionPage() {
                   {includeSecondHand ? 'Included' : 'Not included'}
                 </Typography>
               </Box>
-              
+
               <Divider sx={{ my: 2 }} />
-              
+
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="subtitle1">
                   Total Price:
@@ -715,13 +781,13 @@ export default function SubscriptionPage() {
                   ${calculateTotalPrice().toFixed(2)}
                 </Typography>
               </Box>
-              
+
               <Typography variant="body2" color="text.secondary">
-                {selectedPlan?.id === 'monthly' 
-                  ? 'Billed monthly' 
+                {selectedPlan?.id === 'monthly'
+                  ? 'Billed monthly'
                   : 'Billed quarterly'}
               </Typography>
-              
+
               {includeSecondHand && (
                 <Alert severity="success" sx={{ mt: 2 }}>
                   You're saving 10% by including second-hand items!
@@ -734,168 +800,127 @@ export default function SubscriptionPage() {
     );
   };
 
-  const renderStylePreferences = () => {
+  const renderExplorationLevel = () => {
     return (
       <Box>
         <Typography variant="h5" gutterBottom>
-          Your Style Preferences
+          Exploration Preferences
         </Typography>
         <Typography variant="body1" color="text.secondary" paragraph>
-          Tell us what you like so we can personalize your fashion box
+          Tell us how adventurous you want us to be with your style recommendations
         </Typography>
-        
-        {(errors.colors || errors.styles || errors.topSize || errors.bottomSize || errors.shoeSize) && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {errors.colors && <div>{errors.colors}</div>}
-            {errors.styles && <div>{errors.styles}</div>}
-            {errors.topSize && <div>{errors.topSize}</div>}
-            {errors.bottomSize && <div>{errors.bottomSize}</div>}
-            {errors.shoeSize && <div>{errors.shoeSize}</div>}
-          </Alert>
+
+        {errors.exploration && (
+          <Alert severity="error" sx={{ mb: 2 }}>{errors.exploration}</Alert>
         )}
-        
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={6}>
-            <Typography variant="h6" gutterBottom>
-              Color Preferences
-            </Typography>
-            <FormControl component="fieldset">
-              <FormLabel component="legend">Select your favorite colors</FormLabel>
-              <Grid container spacing={1} sx={{ mt: 1 }}>
-                {availableColors.map((color) => (
-                  <Grid item key={color}>
-                    <Chip 
-                      label={color}
-                      clickable
-                      color={preferences.colors.includes(color) ? 'primary' : 'default'}
-                      onClick={() => toggleColorSelection(color)}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-            </FormControl>
-            
-            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
-              Style Preferences
-            </Typography>
-            <FormControl component="fieldset">
-              <FormLabel component="legend">Select your preferred styles</FormLabel>
-              <Grid container spacing={1} sx={{ mt: 1 }}>
-                {availableStyles.map((style) => (
-                  <Grid item key={style}>
-                    <Chip 
-                      label={style}
-                      clickable
-                      color={preferences.styles.includes(style) ? 'primary' : 'default'}
-                      onClick={() => toggleStyleSelection(style)}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-            </FormControl>
-          </Grid>
+
+        <Grid container spacing={3}>
+          {explorationOptions.map((option) => (
+            <Grid item xs={12} key={option.id}>
+              <Card
+                variant={explorationLevel === option ? "outlined" : "elevation"}
+                sx={{
+                  cursor: 'pointer',
+                  border: explorationLevel === option ? '2px solid #1976d2' : '1px solid #e0e0e0',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: 3
+                  }
+                }}
+                onClick={() => setExplorationLevel(option)}
+              >
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Box sx={{ 
+                      display: 'flex',
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      bgcolor: explorationLevel === option ? 'primary.main' : 'grey.200',
+                      color: explorationLevel === option ? 'white' : 'text.primary',
+                      mr: 2
+                    }}>
+                      {option.icon}
+                    </Box>
+                    <Typography variant="h6">
+                      {option.title}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body1" sx={{ mt: 1, ml: 7 }}>
+                    {option.description}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, ml: 7 }}>
+                    {option.details}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Your Size Information
+          </Typography>
           
-          <Grid item xs={12} md={6}>
-            <Typography variant="h6" gutterBottom>
-              Size Information
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Top Size</InputLabel>
-                  <Select
-                    value={preferences.sizes.top || ''}
-                    label="Top Size"
-                    onChange={(e) => handleSizeChange('top', e.target.value)}
-                    error={!!errors.topSize}
-                  >
-                    {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
-                      <MenuItem key={size} value={size}>{size}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Bottom Size</InputLabel>
-                  <Select
-                    value={preferences.sizes.bottom || ''}
-                    label="Bottom Size"
-                    onChange={(e) => handleSizeChange('bottom', e.target.value)}
-                    error={!!errors.bottomSize}
-                  >
-                    {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
-                      <MenuItem key={size} value={size}>{size}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Shoe Size</InputLabel>
-                  <Select
-                    value={preferences.sizes.shoe || ''}
-                    label="Shoe Size"
-                    onChange={(e) => handleSizeChange('shoe', e.target.value)}
-                    error={!!errors.shoeSize}
-                  >
-                    {['36', '37', '38', '39', '40', '41', '42', '43', '44', '45'].map((size) => (
-                      <MenuItem key={size} value={size}>{size}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+          {(errors.topSize || errors.bottomSize || errors.shoeSize) && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {errors.topSize && <div>{errors.topSize}</div>}
+              {errors.bottomSize && <div>{errors.bottomSize}</div>}
+              {errors.shoeSize && <div>{errors.shoeSize}</div>}
+            </Alert>
+          )}
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth error={!!errors.topSize}>
+                <InputLabel>Top Size</InputLabel>
+                <Select
+                  value={sizes.top}
+                  label="Top Size"
+                  onChange={(e) => handleSizeChange('top', e.target.value)}
+                >
+                  {sizeOptions.top.map(size => (
+                    <MenuItem key={size} value={size}>{size}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             
-            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
-              Additional Notes
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              placeholder="Tell us more about your style preferences, specific things you like or dislike, etc."
-              variant="outlined"
-              value={preferences.notes || ''}
-              onChange={handleNotesChange}
-            />
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth error={!!errors.bottomSize}>
+                <InputLabel>Bottom Size</InputLabel>
+                <Select
+                  value={sizes.bottom}
+                  label="Bottom Size"
+                  onChange={(e) => handleSizeChange('bottom', e.target.value)}
+                >
+                  {sizeOptions.bottom.map(size => (
+                    <MenuItem key={size} value={size}>{size}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             
-            <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Items You Don't Want
-              </Typography>
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={preferences.excludedItems.includes('sleeveless')}
-                    onChange={() => toggleExcludedItem('sleeveless')}
-                  />
-                }
-                label="No sleeveless tops"
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={preferences.excludedItems.includes('skinny')}
-                    onChange={() => toggleExcludedItem('skinny')}
-                  />
-                }
-                label="No skinny jeans"
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={preferences.excludedItems.includes('flashy')}
-                    onChange={() => toggleExcludedItem('flashy')}
-                  />
-                }
-                label="No flashy prints"
-              />
-            </Box>
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth error={!!errors.shoeSize}>
+                <InputLabel>Shoe Size</InputLabel>
+                <Select
+                  value={sizes.shoe}
+                  label="Shoe Size"
+                  onChange={(e) => handleSizeChange('shoe', e.target.value)}
+                >
+                  {sizeOptions.shoe.map(size => (
+                    <MenuItem key={size} value={size}>{size}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
-        </Grid>
+        </Box>
       </Box>
     );
   };
@@ -906,17 +931,17 @@ export default function SubscriptionPage() {
         <Typography variant="h5" gutterBottom align="center">
           Review Your Subscription
         </Typography>
-        
+
         {submissionError && (
           <Alert severity="error" sx={{ mb: 3 }}>{submissionError}</Alert>
         )}
-        
+
         {submissionSuccess && (
           <Alert severity="success" sx={{ mb: 3 }}>
             Your subscription has been created successfully! Your first box will be delivered soon.
           </Alert>
         )}
-        
+
         <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -926,149 +951,89 @@ export default function SubscriptionPage() {
               <List dense>
                 <ListItem>
                   <ListItemIcon><EventIcon /></ListItemIcon>
-                  <ListItemText 
-                    primary="Plan Type" 
-                    secondary={selectedPlan?.title || 'Not selected'} 
+                  <ListItemText
+                    primary="Plan Type"
+                    secondary={selectedPlan?.title || 'Not selected'}
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon><ShoppingBagIcon /></ListItemIcon>
-                  <ListItemText 
-                    primary="Package" 
-                    secondary={selectedPackage?.title || 'Not selected'} 
+                  <ListItemText
+                    primary="Package"
+                    secondary={selectedPackage?.title || 'Not selected'}
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon><ShoppingBagIcon /></ListItemIcon>
-                  <ListItemText 
-                    primary="Quality Tier" 
-                    secondary={selectedTier?.title || 'Not selected'} 
+                  <ListItemText
+                    primary="Quality Tier"
+                    secondary={selectedTier?.title || 'Not selected'}
                   />
                 </ListItem>
                 {selectedFestive && selectedFestive.id !== 'none' && (
                   <ListItem>
                     <ListItemIcon><CelebrationIcon /></ListItemIcon>
-                    <ListItemText 
-                      primary="Festive Package" 
-                      secondary={selectedFestive?.title || 'None'} 
+                    <ListItemText
+                      primary="Festive Package"
+                      secondary={selectedFestive?.title || 'None'}
                     />
                   </ListItem>
                 )}
                 <ListItem>
                   <ListItemIcon><AutorenewIcon /></ListItemIcon>
-                  <ListItemText 
-                    primary="Includes Second-hand Items" 
-                    secondary={includeSecondHand ? 'Yes' : 'No'} 
+                  <ListItemText
+                    primary="Includes Second-hand Items"
+                    secondary={includeSecondHand ? 'Yes' : 'No'}
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon><LocalShippingIcon /></ListItemIcon>
-                  <ListItemText 
-                    primary="First Delivery" 
+                  <ListItemText
+                    primary="First Delivery"
                     secondary="Estimated within 5-7 business days"
                   />
                 </ListItem>
               </List>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <Typography variant="h6" gutterBottom>
-                Style Preferences
+                Your Preferences
               </Typography>
-              {preferences.colors.length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Preferred Colors:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
-                    {preferences.colors.map((color) => (
-                      <Chip key={color} label={color} size="small" />
-                    ))}
-                  </Box>
-                </Box>
-              )}
+              <ListItem>
+                <ListItemIcon><ExploreIcon /></ListItemIcon>
+                <ListItemText
+                  primary="Exploration Level"
+                  secondary={explorationLevel?.title || 'Not selected'}
+                />
+              </ListItem>
               
-              {preferences.styles.length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Preferred Styles:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
-                    {preferences.styles.map((style) => (
-                      <Chip key={style} label={style} size="small" />
-                    ))}
-                  </Box>
-                </Box>
-              )}
-              
-              {Object.keys(preferences.sizes).length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Sizes:
-                  </Typography>
-                  <List dense>
-                    {Object.entries(preferences.sizes).map(([key, value]) => (
-                      value && (
-                        <ListItem key={key} sx={{ py: 0 }}>
-                          <ListItemText 
-                            primary={`${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}`} 
-                          />
-                        </ListItem>
-                      )
-                    ))}
-                  </List>
-                </Box>
-              )}
-              
-              {preferences.excludedItems.length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Items you don't want:
-                  </Typography>
-                  <List dense>
-                    {preferences.excludedItems.map((item) => (
-                      <ListItem key={item} sx={{ py: 0 }}>
-                        <ListItemText 
-                          primary={
-                            item === 'sleeveless' ? 'No sleeveless tops' :
-                            item === 'skinny' ? 'No skinny jeans' :
-                            item === 'flashy' ? 'No flashy prints' : item
-                          } 
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-              
-              {preferences.notes && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Additional Notes:
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    {preferences.notes}
-                  </Typography>
-                </Box>
-              )}
+              <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                Your Sizes:
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {sizes.top && <Chip label={`Top: ${sizes.top}`} size="small" />}
+                {sizes.bottom && <Chip label={`Bottom: ${sizes.bottom}`} size="small" />}
+                {sizes.shoe && <Chip label={`Shoe: ${sizes.shoe}`} size="small" />}
+              </Box>
             </Grid>
           </Grid>
-          
+
           <Divider sx={{ my: 3 }} />
-          
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box>
               <Typography variant="h6" color="primary">
-                Total: ${calculateTotalPrice().toFixed(2)} 
+                Total: ${calculateTotalPrice().toFixed(2)}
                 {selectedPlan?.id === 'monthly' ? '/month' : '/quarter'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Your first box will be shipped within 5-7 business days
               </Typography>
             </Box>
-            <Button 
-              variant="contained" 
-              size="large" 
+            <Button
+              variant="contained"
+              size="large"
               color="primary"
               onClick={handleSubmit}
               disabled={isSubmitting || submissionSuccess}
@@ -1089,11 +1054,11 @@ export default function SubscriptionPage() {
             </Button>
           </Box>
         </Paper>
-        
+
         <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            <strong>Subscription Terms:</strong> You can cancel or pause your subscription at any time. 
-            Unwanted items can be returned for reward points that can be used to purchase items from 
+            <strong>Subscription Terms:</strong> You can cancel or pause your subscription at any time.
+            Unwanted items can be returned for reward points that can be used to purchase items from
             the second-hand marketplace or to reduce the cost of your subscription.
           </Typography>
         </Box>
@@ -1108,7 +1073,7 @@ export default function SubscriptionPage() {
       case 1:
         return renderPackageSelection();
       case 2:
-        return renderStylePreferences();
+        return renderExplorationLevel();
       case 3:
         return renderReviewAndConfirm();
       default:
@@ -1123,8 +1088,7 @@ export default function SubscriptionPage() {
       case 1:
         return !selectedPackage || !selectedTier;
       case 2:
-        return preferences.colors.length === 0 || preferences.styles.length === 0 || 
-               !preferences.sizes.top || !preferences.sizes.bottom || !preferences.sizes.shoe;
+        return !explorationLevel || !sizes.top || !sizes.bottom || !sizes.shoe;
       case 3:
         return isSubmitting || submissionSuccess;
       default:
@@ -1132,100 +1096,316 @@ export default function SubscriptionPage() {
     }
   };
 
-  return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Typography 
-        variant="h4" 
-        gutterBottom 
-        align="center"
-        sx={{ 
-          fontWeight: 'medium',
-          mb: 3
-        }}
-      >
-        H&M Subscription Service
-      </Typography>
-      <Typography 
-        variant="body1" 
-        color="text.secondary" 
-        paragraph 
-        align="center"
-        sx={{ maxWidth: 800, mx: 'auto', mb: 4 }}
-      >
-        Create your personalized fashion subscription box
-      </Typography>
-      
-      <Stepper 
-        activeStep={activeStep} 
-        sx={{ 
-          mb: 4,
-          '& .MuiStepLabel-root': {
-            color: 'text.secondary'
-          },
-          '& .MuiStepIcon-root.Mui-active': {
-            color: 'primary.main'
-          },
-          '& .MuiStepIcon-root.Mui-completed': {
-            color: 'primary.main'
-          }
-        }}
-      >
-        {steps.map((label) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
-      
-      {getStepContent(activeStep)}
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-        <Button
-          disabled={activeStep === 0 || isSubmitting}
-          onClick={handleBack}
-          sx={{ 
-            color: 'text.primary',
-            borderColor: 'text.primary',
-            '&:hover': {
-              borderColor: 'text.primary',
-              bgcolor: 'rgba(0,0,0,0.04)'
+  // Replace the entire return statement in SubscriptionPage.js with this fixed version
+return (
+  <Box sx={{ p: { xs: 2, md: 3 } }}>
+    {/* Style Preference Questionnaire Dialog */}
+    {showQuestionnaire && (
+      <Paper elevation={3} sx={{ p: 3, mb: 4, maxWidth: 800, mx: 'auto' }}>
+        <Typography variant="h5" gutterBottom>
+          Tell Us About Your Style Preferences
+        </Typography>
+        <Typography variant="body1" color="text.secondary" paragraph>
+          This information will help us personalize your subscription recommendations.
+        </Typography>
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>
+              Which colors do you prefer? (Select up to 5)
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {availableColors.map((color) => (
+                <Chip
+                  key={color}
+                  label={color}
+                  onClick={() => {
+                    if (preferredColors.includes(color)) {
+                      setPreferredColors(preferredColors.filter(c => c !== color));
+                    } else if (preferredColors.length < 5) {
+                      setPreferredColors([...preferredColors, color]);
+                    }
+                  }}
+                  color={preferredColors.includes(color) ? "primary" : "default"}
+                  variant={preferredColors.includes(color) ? "filled" : "outlined"}
+                  sx={{ m: 0.5 }}
+                />
+              ))}
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>
+              Which styles do you prefer? (Select up to 3)
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {availableStyles.map((style) => (
+                <Chip
+                  key={style}
+                  label={style}
+                  onClick={() => {
+                    if (preferredStyles.includes(style)) {
+                      setPreferredStyles(preferredStyles.filter(s => s !== style));
+                    } else if (preferredStyles.length < 3) {
+                      setPreferredStyles([...preferredStyles, style]);
+                    }
+                  }}
+                  color={preferredStyles.includes(style) ? "primary" : "default"}
+                  variant={preferredStyles.includes(style) ? "filled" : "outlined"}
+                  sx={{ m: 0.5 }}
+                />
+              ))}
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>
+              Your Size Information
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel>Top Size</InputLabel>
+                  <Select
+                    value={sizes.top}
+                    label="Top Size"
+                    onChange={(e) => handleSizeChange('top', e.target.value)}
+                  >
+                    {sizeOptions.top.map(size => (
+                      <MenuItem key={size} value={size}>{size}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel>Bottom Size</InputLabel>
+                  <Select
+                    value={sizes.bottom}
+                    label="Bottom Size"
+                    onChange={(e) => handleSizeChange('bottom', e.target.value)}
+                  >
+                    {sizeOptions.bottom.map(size => (
+                      <MenuItem key={size} value={size}>{size}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel>Shoe Size</InputLabel>
+                  <Select
+                    value={sizes.shoe}
+                    label="Shoe Size"
+                    onChange={(e) => handleSizeChange('shoe', e.target.value)}
+                  >
+                    {sizeOptions.shoe.map(size => (
+                      <MenuItem key={size} value={size}>{size}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
+        
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+          <Button 
+            variant="contained"
+            onClick={handleQuestionnaireComplete}
+            disabled={preferredColors.length === 0 || preferredStyles.length === 0 || !sizes.top || !sizes.bottom || !sizes.shoe}
+          >
+            Save Preferences
+          </Button>
+        </Box>
+      </Paper>
+    )}
+    
+    {!showQuestionnaire && (
+      <>
+        <Typography
+          variant="h4"
+          gutterBottom
+          align="center"
+          sx={{
+            fontWeight: 'medium',
+            mb: 3
+          }}
+        >
+          H&M Subscription Service
+        </Typography>
+        <Typography
+          variant="body1"
+          color="text.secondary"
+          paragraph
+          align="center"
+          sx={{ maxWidth: 800, mx: 'auto', mb: 4 }}
+        >
+          Create your personalized fashion subscription box
+        </Typography>
+
+        <Stepper
+          activeStep={activeStep}
+          sx={{
+            mb: 4,
+            '& .MuiStepLabel-root': {
+              color: 'text.secondary'
+            },
+            '& .MuiStepIcon-root.Mui-active': {
+              color: 'primary.main'
+            },
+            '& .MuiStepIcon-root.Mui-completed': {
+              color: 'primary.main'
             }
           }}
-          variant="outlined"
         >
-          Back
-        </Button>
+          {steps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+
+        {getStepContent(activeStep)}
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+          <Button
+            disabled={activeStep === 0 || isSubmitting}
+            onClick={handleBack}
+            sx={{
+              color: 'text.primary',
+              borderColor: 'text.primary',
+              '&:hover': {
+                borderColor: 'text.primary',
+                bgcolor: 'rgba(0,0,0,0.04)'
+              }
+            }}
+            variant="outlined"
+          >
+            Back
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
+            disabled={isNextDisabled()}
+            sx={{
+              bgcolor: 'primary.main',
+              '&:hover': {
+                bgcolor: 'primary.dark'
+              },
+              px: 4
+            }}
+          >
+            {activeStep === steps.length - 1 ? 'Subscribe' : 'Next'}
+          </Button>
+        </Box>
+      </>
+    )}
+
+    {/* New User Onboarding Dialog */}
+    <Dialog
+      open={showOnboarding}
+      onClose={() => setShowOnboarding(false)}
+      aria-labelledby="onboarding-dialog-title"
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle id="onboarding-dialog-title">
+        Welcome to H&M Subscription Service!
+      </DialogTitle>
+      <DialogContent>
+        <DialogContentText paragraph>
+          To offer you the best personalized fashion recommendations, we need to understand your style preferences.
+          You can choose one of the following options:
+        </DialogContentText>
         
-        <Button
-          variant="contained"
-          onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
-          disabled={isNextDisabled()}
-          sx={{ 
-            bgcolor: 'primary.main', 
-            '&:hover': { 
-              bgcolor: 'primary.dark' 
-            },
-            px: 4
-          }}
+        <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid item xs={12} md={6}>
+            <Card 
+              sx={{ 
+                cursor: 'pointer',
+                height: '100%',
+                transition: 'all 0.2s',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: 3
+                },
+                border: onboardingOption === 'form' ? '2px solid #1976d2' : '1px solid #e0e0e0',
+              }}
+              onClick={() => setOnboardingOption('form')}
+            >
+              <CardContent sx={{ textAlign: 'center' }}>
+                <EditIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                <Typography variant="h6" gutterBottom>
+                  Fill in Preferences
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Complete a simple questionnaire about your style preferences
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card 
+              sx={{ 
+                cursor: 'pointer',
+                height: '100%',
+                transition: 'all 0.2s',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: 3
+                },
+                border: onboardingOption === 'swipe' ? '2px solid #1976d2' : '1px solid #e0e0e0',
+              }}
+              onClick={() => setOnboardingOption('swipe')}
+            >
+              <CardContent sx={{ textAlign: 'center' }}>
+                <SwipeIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                <Typography variant="h6" gutterBottom>
+                  Use Swipe Feature
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Swipe through {swipesNeeded} items to help us learn your style
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button 
+          startIcon={<HelpOutlineIcon />}
+          onClick={() => setShowOnboarding(false)}
         >
-          {activeStep === steps.length - 1 ? 'Subscribe' : 'Next'}
+          Skip for Now
         </Button>
-      </Box>
-      
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleSnackbarClose} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
+        <Button 
+          variant="contained" 
+          onClick={() => handleOnboardingOption(onboardingOption)}
+          disabled={!onboardingOption}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
-  );
+          Continue
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    <Snackbar
+      open={snackbar.open}
+      autoHideDuration={6000}
+      onClose={handleSnackbarClose}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    >
+      <Alert
+        onClose={handleSnackbarClose}
+        severity={snackbar.severity}
+        sx={{ width: '100%' }}
+      >
+        {snackbar.message}
+      </Alert>
+    </Snackbar>
+  </Box>
+);
 }
